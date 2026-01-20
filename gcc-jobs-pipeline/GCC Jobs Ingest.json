@@ -1,0 +1,388 @@
+{
+  "name": "GCC Jobs Ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "/*\n  BUILD SOURCES (API ONLY, DEEP)\n  - Greenhouse Job Board API\n  - Lever postings\n  - SmartRecruiters postings (paged via limit/offset)\n  - Workable (best-effort public endpoint you already use)\n\n  Note: This workflow intentionally excludes HTML job boards.\n*/\n\nfunction gh(token) {\n  // Greenhouse Job Board API: GET /v1/boards/{board_token}/jobs?content=true\n  return `https://boards-api.greenhouse.io/v1/boards/${token}/jobs?content=true`;\n}\n\nfunction lever(company) {\n  return `https://api.lever.co/v0/postings/${company}?mode=json`;\n}\n\nfunction workable(sub) {\n  // Keeping your existing public endpoint usage\n  return `https://www.workable.com/api/accounts/${sub}?details=true`;\n}\n\nfunction smartRecruitersPaged(companyIdentifier, pages = 10, limit = 100) {\n  // SmartRecruiters Posting API supports limit + offset\n  // GET https://api.smartrecruiters.com/v1/companies/{companyIdentifier}/postings?limit={limit}&offset={offset}\n  const urls = [];\n  for (let i = 0; i < pages; i++) {\n    urls.push(`https://api.smartrecruiters.com/v1/companies/${companyIdentifier}/postings?limit=${limit}&offset=${i * limit}`);\n  }\n  return urls;\n}\n\nconst sources = [];\n\nfunction add(ats, company, country, industry, url) {\n  sources.push({\n    ats,\n    company,\n    country,\n    industry,\n    url\n  });\n}\n\n// ===== UAE =====\nadd(\"greenhouse\", \"Careem\", \"UAE\", \"Mobility\", gh(\"careem\"));\nadd(\"greenhouse\", \"Talabat\", \"UAE\", \"Food Delivery\", gh(\"talabat\"));\nadd(\"greenhouse\", \"Noon\", \"UAE\", \"E-commerce\", gh(\"noon\"));\n\nadd(\"workable\", \"Kitopi\", \"UAE\", \"Cloud Kitchens\", workable(\"kitopi\"));\nadd(\"workable\", \"Fetchr\", \"UAE\", \"Logistics\", workable(\"fetchr\"));\nadd(\"workable\", \"Dubizzle\", \"UAE\", \"Classifieds\", workable(\"dubizzle\"));\nadd(\"workable\", \"Property Finder\", \"UAE\", \"PropTech\", workable(\"propertyfinder\"));\nadd(\"workable\", \"Bayut\", \"UAE\", \"Real Estate\", workable(\"bayut\"));\nadd(\"workable\", \"Zbooni\", \"UAE\", \"Fintech\", workable(\"zbooni\"));\nadd(\"workable\", \"Sarwa\", \"UAE\", \"Investment\", workable(\"sarwa\"));\nadd(\"workable\", \"Wio Bank\", \"UAE\", \"Digital Banking\", workable(\"wiobank\"));\nadd(\"workable\", \"Vezeeta\", \"UAE\", \"HealthTech\", workable(\"vezeeta\"));\n\nadd(\"lever\", \"Swvl\", \"UAE\", \"Mass Transit\", lever(\"swvl\"));\nadd(\"lever\", \"Anghami\", \"UAE\", \"Music Streaming\", lever(\"anghami\"));\n\nfor (const u of smartRecruitersPaged(\"Emirates\", 10, 100)) {\n  add(\"smartrecruiters\", \"Emirates\", \"UAE\", \"Aviation\", u);\n}\nfor (const u of smartRecruitersPaged(\"EtihadAirways\", 10, 100)) {\n  add(\"smartrecruiters\", \"Etihad\", \"UAE\", \"Aviation\", u);\n}\n\n// ===== SAUDI ARABIA =====\nadd(\"greenhouse\", \"STC\", \"Saudi Arabia\", \"Telecom\", gh(\"stc\"));\nadd(\"workable\", \"NEOM\", \"Saudi Arabia\", \"Smart City\", workable(\"neom\"));\nadd(\"workable\", \"Tamara\", \"Saudi Arabia\", \"BNPL\", workable(\"tamara\"));\nadd(\"workable\", \"Tabby\", \"Saudi Arabia\", \"Fintech\", workable(\"tabby\"));\nadd(\"workable\", \"Jahez\", \"Saudi Arabia\", \"Food Delivery\", workable(\"jahez\"));\nadd(\"workable\", \"Mrsool\", \"Saudi Arabia\", \"Delivery\", workable(\"mrsool\"));\nadd(\"workable\", \"Foodics\", \"Saudi Arabia\", \"Restaurant Tech\", workable(\"foodics\"));\nadd(\"workable\", \"Lucidya\", \"Saudi Arabia\", \"AI/SaaS\", workable(\"lucidya\"));\nadd(\"workable\", \"Lean Technologies\", \"Saudi Arabia\", \"Open Banking\", workable(\"leantech\"));\nadd(\"workable\", \"Rewaa\", \"Saudi Arabia\", \"Retail SaaS\", workable(\"rewaa\"));\nadd(\"workable\", \"Sary\", \"Saudi Arabia\", \"B2B Marketplace\", workable(\"sary\"));\nadd(\"lever\", \"HungerStation\", \"Saudi Arabia\", \"Food Delivery\", lever(\"hungerstation\"));\n\n// ===== QATAR =====\nadd(\"greenhouse\", \"Qatar Airways\", \"Qatar\", \"Aviation\", gh(\"qatarairways\"));\nadd(\"workable\", \"Ooredoo Qatar\", \"Qatar\", \"Telecom\", workable(\"ooredoo-qatar\"));\nadd(\"workable\", \"Snoonu\", \"Qatar\", \"Delivery\", workable(\"snoonu\"));\nadd(\"workable\", \"Vodafone Qatar\", \"Qatar\", \"Telecom\", workable(\"vodafone-qatar\"));\nadd(\"lever\", \"Qatar Foundation\", \"Qatar\", \"Education\", lever(\"qatarfoundation\"));\n\n// ===== OMAN =====\nadd(\"greenhouse\", \"Omantel\", \"Oman\", \"Telecom\", gh(\"omantel\"));\nadd(\"workable\", \"OQ\", \"Oman\", \"Energy\", workable(\"oq\"));\nadd(\"workable\", \"Oman Air\", \"Oman\", \"Aviation\", workable(\"omanair\"));\nadd(\"lever\", \"Bank Muscat\", \"Oman\", \"Banking\", lever(\"bankmuscat\"));\n\n// ===== BAHRAIN =====\nadd(\"greenhouse\", \"AWS Bahrain\", \"Bahrain\", \"Cloud\", gh(\"aws-bahrain\"));\nadd(\"workable\", \"VIVA Bahrain\", \"Bahrain\", \"Telecom\", workable(\"viva-bahrain\"));\nadd(\"workable\", \"Batelco\", \"Bahrain\", \"Telecom\", workable(\"batelco\"));\nadd(\"lever\", \"Benefit\", \"Bahrain\", \"Fintech\", lever(\"benefit\"));\n\n// ===== KUWAIT =====\nadd(\"workable\", \"Zain Kuwait\", \"Kuwait\", \"Telecom\", workable(\"zain-kuwait\"));\nadd(\"workable\", \"Talabat Kuwait\", \"Kuwait\", \"Food Delivery\", workable(\"talabat-kuwait\"));\nadd(\"lever\", \"NBK\", \"Kuwait\", \"Banking\", lever(\"nbk\"));\nadd(\"workable\", \"Agility\", \"Kuwait\", \"Logistics\", workable(\"agility\"));\n\nreturn sources.map(s => ({ json: s }));\n"
+      },
+      "id": "62399e12-7fe1-4017-83ba-51e2f5c262e1",
+      "name": "Build Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  ...$json,\n  _meta: {\n    company: $json.company ?? null,\n    country: $json.country ?? null,\n    industry: $json.industry ?? null,\n    source: $json.ats ?? null,\n    fetched_from: $json.url ?? null\n  }\n};\n"
+      },
+      "id": "96e296eb-5529-42b6-8b47-ef8085c49c34",
+      "name": "Attach Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json;\nconst meta = job._meta || {};\nconst ats = (job._ats || meta.source || \"\").toLowerCase();\n\nfunction dateOnly(v) {\n  if (!v) return null;\n  const d = new Date(v);\n  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];\n}\n\n// Normalize Greenhouse\nif (ats === 'greenhouse') {\n  return {\n    title: job.title || null,\n    company: meta.company || null,\n    location: job.location?.name || null,\n    country: meta.country || null,\n    contract_type: null,\n    category: meta.industry || null,\n    source: 'greenhouse',\n    job_url: job.absolute_url || null,\n    posted_at: dateOnly(job.updated_at || job.created_at),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// Normalize Lever\nif (ats === 'lever') {\n  return {\n    title: job.text || job.title || null,\n    company: meta.company || null,\n    location: job.categories?.location || null,\n    country: meta.country || null,\n    contract_type: job.categories?.commitment || null,\n    category: job.categories?.team || meta.industry || null,\n    source: 'lever',\n    job_url: job.hostedUrl || job.applyUrl || null,\n    posted_at: dateOnly(job.createdAt),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// Normalize SmartRecruiters\nif (ats === 'smartrecruiters') {\n  const loc = job.location || {};\n  const locStr = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || null;\n\n  return {\n    title: job.name || null,\n    company: meta.company || job.company?.name || null,\n    location: locStr,\n    country: meta.country || null,\n    contract_type: job.typeOfEmployment?.label || null,\n    category: job.function?.label || meta.industry || null,\n    source: 'smartrecruiters',\n    // 'ref' is an API URL for full object; it's stable enough as an id. If missing, keep null.\n    job_url: job.ref || null,\n    posted_at: dateOnly(job.releasedDate),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// Normalize Workable (best-effort)\nreturn {\n  title: job.title || job.job_title || null,\n  company: meta.company || null,\n  location: job.location || job.location?.name || null,\n  country: meta.country || null,\n  contract_type: job.employment_type || job.contract_type || null,\n  category: job.department || meta.industry || null,\n  source: 'workable',\n  job_url: job.url || job.application_url || null,\n  posted_at: dateOnly(job.published_at || job.created_at),\n  collected_at: new Date().toISOString().split('T')[0],\n  salary_min: null,\n  salary_max: null\n};\n"
+      },
+      "id": "0758b70c-db22-4d1d-8ab1-951c4bf4ef07",
+      "name": "Normalize Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "id": "b6be8bb3-2b5d-4d22-9681-2481786b10e7",
+      "name": "Schedule Trigger1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 4,
+              "batchInterval": 1500
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "42a714f1-91ba-4308-9bce-e0b774885c32",
+      "name": "Fetch Jobs1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        96
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "f83a20a5-55b6-48f3-86a3-36caca0c0d11",
+      "name": "Merge Metadata1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        912,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  Extract Jobs (API ONLY)\n  Input item shape after merge:\n    - meta fields: ats/company/country/industry/url\n    - fetched body is at the same level (from HTTP Request node)\n\n  Outputs 1 item per job with:\n    - raw job fields\n    - _meta\n    - _ats\n*/\n\nconst out = [];\n\nfor (const item of items) {\n  const input = item.json;\n  const meta = input._meta || {};\n  const ats = (meta.source || input.ats || \"\").toLowerCase();\n\n  let rawJobs = [];\n\n  // Greenhouse Job Board API => { jobs: [...] }\n  if (ats === \"greenhouse\" && Array.isArray(input.jobs)) {\n    rawJobs = input.jobs;\n  }\n\n  // Lever => [ ... ]\n  else if (ats === \"lever\" && Array.isArray(input)) {\n    rawJobs = input;\n  }\n\n  // SmartRecruiters postings => { content: [...] }\n  else if (ats === \"smartrecruiters\" && Array.isArray(input.content)) {\n    rawJobs = input.content;\n  }\n\n  // Workable (best-effort)\n  else if (ats === \"workable\") {\n    // some responses are { jobs: { results: [...] } }\n    if (Array.isArray(input.jobs?.results)) rawJobs = input.jobs.results;\n    else if (Array.isArray(input.results)) rawJobs = input.results;\n    else if (Array.isArray(input.jobs)) rawJobs = input.jobs;\n    // if none match, it will fall to debug\n  }\n\n  if (rawJobs.length) {\n    for (const job of rawJobs) {\n      out.push({\n        json: {\n          ...job,\n          _meta: meta,\n          _ats: ats\n        }\n      });\n    }\n  } else {\n    out.push({\n      json: {\n        _error: \"No jobs extracted from this response\",\n        _ats: ats,\n        _meta: meta,\n        keys: Object.keys(input)\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "9617f416-47e7-4396-af8c-36c10cc29a24",
+      "name": "Extract Jobs1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "jobs",
+          "mode": "list",
+          "cachedResultName": "jobs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_url": "={{$json[\"job_url\"]}}",
+            "salary_min": "={{ $json.salary_min }}",
+            "salary_max": "={{ $json.salary_max }}",
+            "title": "={{ $json.title }}",
+            "company": "={{ $json.company }}",
+            "location": "={{ $json.location }}",
+            "country": "={{ $json.country }}",
+            "contract_type": "={{ $json.contract_type }}",
+            "category": "={{ $json.category }}",
+            "source": "={{ $json.source }}",
+            "posted_at": "={{ $json.posted_at }}"
+          },
+          "matchingColumns": [
+            "job_url"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "country",
+              "displayName": "country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_min",
+              "displayName": "salary_min",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_max",
+              "displayName": "salary_max",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contract_type",
+              "displayName": "contract_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "job_url",
+              "displayName": "job_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "posted_at",
+              "displayName": "posted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "collected_at",
+              "displayName": "collected_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c0129b2a-7993-4b5d-95b9-c7efa7595cf7",
+      "name": "Insert rows in a table1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1792,
+        -32
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Build Sources": {
+      "main": [
+        [
+          {
+            "node": "Fetch Jobs1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Metadata1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Meta": {
+      "main": [
+        [
+          {
+            "node": "Extract Jobs1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Jobs": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Build Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Jobs1": {
+      "main": [
+        [
+          {
+            "node": "Merge Metadata1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Metadata1": {
+      "main": [
+        [
+          {
+            "node": "Attach Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Jobs1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "73523fd3-c547-499a-9d37-5470102e0bc3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "9ft5wuHRRvdF6tCt",
+  "tags": []
+}

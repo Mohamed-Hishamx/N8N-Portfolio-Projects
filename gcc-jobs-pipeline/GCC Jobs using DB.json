@@ -1,0 +1,1153 @@
+{
+  "name": "claude",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks"
+            }
+          ]
+        }
+      },
+      "id": "c51a468e-a459-42e5-ad90-e4d937e2157f",
+      "name": "Run Weekly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        128,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, country, industry, website, careers_url\nFROM companies_need_detection\nLIMIT 200;\n",
+        "options": {}
+      },
+      "id": "577ccf3e-7747-47c3-a7a9-fbf107b5f000",
+      "name": "Get Companies Needing Detection",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        352,
+        -48
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Add 2 second delay between API checks to be respectful\nawait new Promise(resolve => setTimeout(resolve, 2000));\nreturn $input.item;"
+      },
+      "id": "ae4513e4-d9cc-4af0-b0a2-d335b4a7c8b7",
+      "name": "Rate Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "active"
+            }
+          ]
+        }
+      },
+      "id": "ac0e4894-e7ba-432f-bc1f-be966f7dca47",
+      "name": "Only Active Sources",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summary of detection run\nconst active = $input.all().filter(i => i.json.status === 'active').length;\nconst needsReview = $input.all().filter(i => i.json.status === 'needs_review').length;\nconst total = $input.all().length;\n\nreturn [{\n  json: {\n    summary: 'ATS Detection Complete',\n    total_checked: total,\n    active_found: active,\n    needs_review: needsReview,\n    success_rate: `${Math.round((active / total) * 100)}%`,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "2fd34ebe-70d7-470b-89bb-725d096b0c57",
+      "name": "Create Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "f3f5b398-0938-4d9b-8638-aeccce1fa9cb",
+      "name": "Run Daily at 6 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        128,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  Health check API endpoints safely in n8n\n  - No AbortController\n  - Uses $httpRequest with timeout\n  - Marks as active/broken\n*/\n\nconst out = [];\n\nfor (const item of items) {\n  const js = item.json;\n  const url = js.api_endpoint;\n\n  if (!url) {\n    out.push({ json: { ...js, status: 'needs_review', error_message: 'Missing api_endpoint' } });\n    continue;\n  }\n\n  try {\n    const res = await $httpRequest({\n      method: 'GET',\n      url,\n      timeout: 15000,\n      returnFullResponse: true,\n      headers: {\n        'User-Agent': 'Mozilla/5.0 (compatible; JobIntel/1.0)',\n        'Accept': 'application/json,text/plain,*/*',\n      },\n    });\n\n    const statusCode = res.statusCode || 200;\n\n    if (statusCode >= 200 && statusCode < 300) {\n      out.push({\n        json: {\n          ...js,\n          status: 'active',\n          last_validated: new Date().toISOString(),\n          error_message: null,\n        },\n      });\n    } else {\n      out.push({\n        json: {\n          ...js,\n          status: 'broken',\n          last_validated: new Date().toISOString(),\n          error_message: `HTTP ${statusCode}`,\n        },\n      });\n    }\n  } catch (e) {\n    out.push({\n      json: {\n        ...js,\n        status: 'broken',\n        last_validated: new Date().toISOString(),\n        error_message: e.message,\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "9eb28546-7a39-4e73-8534-7b8bd5904cf6",
+      "name": "Check Endpoint Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "job_sources",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.status }}",
+            "consecutive_failures": "={{ $json.consecutive_failures }}",
+            "last_validated": "={{ $json.last_validated }}",
+            "error_message": "={{ $json.error_message }}",
+            "total_jobs_fetched": 0,
+            "id": "={{ $json.id }}",
+            "confidence_score": 0
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ats_platform",
+              "displayName": "ats_platform",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "api_endpoint",
+              "displayName": "api_endpoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_validated",
+              "displayName": "last_validated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_successful_fetch",
+              "displayName": "last_successful_fetch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "consecutive_failures",
+              "displayName": "consecutive_failures",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_jobs_fetched",
+              "displayName": "total_jobs_fetched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "2c0d1c14-009c-4a76-89eb-f9a7535ea8f5",
+      "name": "Update Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1008,
+        224
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Rate limit: 1 request per second\nawait new Promise(resolve => setTimeout(resolve, 1000));\nreturn $input.item;"
+      },
+      "id": "6f2baa3e-e15f-411a-9144-1f2504e0db3b",
+      "name": "Rate Limit1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create summary\nconst all = $input.all();\nconst healthy = all.filter(i => i.json.status === 'active' && i.json.consecutive_failures === 0).length;\nconst degraded = all.filter(i => i.json.status === 'active' && i.json.consecutive_failures > 0).length;\nconst broken = all.filter(i => i.json.status === 'broken').length;\n\nreturn [{\n  json: {\n    summary: 'Health Check Complete',\n    total_sources: all.length,\n    healthy: healthy,\n    degraded: degraded,\n    broken: broken,\n    health_percentage: `${Math.round((healthy / all.length) * 100)}%`,\n    timestamp: new Date().toISOString(),\n    alert: broken > 0 ? `⚠️ ${broken} sources are broken!` : '✅ All sources healthy'\n  }\n}];"
+      },
+      "id": "03ec752d-2f8f-4917-994c-17bcb1715c73",
+      "name": "Create Summary1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "ee38ebf8-739d-4613-9419-145d3bed38ff",
+      "name": "Run Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        112,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.api_endpoint }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 2000
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "be5343d9-5fb1-4d45-9dbc-d1c72ad2f69c",
+      "name": "Fetch Jobs from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        576,
+        624
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b1fa26f8-3928-4d9d-b59e-793545e3a8c1",
+      "name": "Merge Metadata",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        784,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  EXTRACT JOBS FROM API RESPONSES\n  Handles different ATS response formats\n*/\n\nconst out = [];\n\nfor (const item of items) {\n  const input = item.json;\n  const source_id = input.source_id;\n  const ats = (input.ats_platform || '').toLowerCase();\n  const company = input.company;\n  const country = input.country;\n  const industry = input.industry;\n  \n  let rawJobs = [];\n  \n  // Greenhouse: { jobs: [...] }\n  if (ats === 'greenhouse' && Array.isArray(input.jobs)) {\n    rawJobs = input.jobs;\n  }\n  \n  // Lever: [ ... ]\n  else if (ats === 'lever') {\n    if (Array.isArray(input)) {\n      rawJobs = input;\n    } else if (Array.isArray(input.data)) {\n      rawJobs = input.data;\n    }\n  }\n  \n  // SmartRecruiters: { content: [...] }\n  else if (ats === 'smartrecruiters' && Array.isArray(input.content)) {\n    rawJobs = input.content;\n  }\n  \n  // Workable: various formats\n  else if (ats === 'workable') {\n    if (Array.isArray(input.jobs?.results)) {\n      rawJobs = input.jobs.results;\n    } else if (Array.isArray(input.results)) {\n      rawJobs = input.results;\n    } else if (Array.isArray(input.jobs)) {\n      rawJobs = input.jobs;\n    }\n  }\n  \n  // Extract jobs\n  if (rawJobs.length > 0) {\n    for (const job of rawJobs) {\n      out.push({\n        json: {\n          ...job,\n          _source_id: source_id,\n          _ats: ats,\n          _company: company,\n          _country: country,\n          _industry: industry\n        }\n      });\n    }\n  } else {\n    // Log extraction failure\n    console.log(`No jobs extracted from ${company} (${ats})`);\n  }\n}\n\nreturn out;"
+      },
+      "id": "cd1975ac-1112-4aca-b498-ef7cf40212bb",
+      "name": "Extract Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/*\n  NORMALIZE JOBS\n  Converts different ATS formats to unified schema\n*/\n\nconst job = $json;\nconst ats = job._ats || '';\n\nfunction dateOnly(v) {\n  if (!v) return null;\n  const d = new Date(v);\n  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];\n}\n\n// Greenhouse\nif (ats === 'greenhouse') {\n  return {\n    source_id: job._source_id,\n    title: job.title || null,\n    company: job._company,\n    location: job.location?.name || null,\n    country: job._country,\n    contract_type: null,\n    category: job.departments?.[0]?.name || job._industry,\n    source: 'greenhouse',\n    job_url: job.absolute_url || null,\n    posted_at: dateOnly(job.updated_at || job.created_at),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// Lever\nif (ats === 'lever') {\n  return {\n    source_id: job._source_id,\n    title: job.text || job.title || null,\n    company: job._company,\n    location: job.categories?.location || null,\n    country: job._country,\n    contract_type: job.categories?.commitment || null,\n    category: job.categories?.team || job._industry,\n    source: 'lever',\n    job_url: job.hostedUrl || job.applyUrl || null,\n    posted_at: dateOnly(job.createdAt),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// SmartRecruiters\nif (ats === 'smartrecruiters') {\n  const loc = job.location || {};\n  const locStr = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || null;\n  \n  return {\n    source_id: job._source_id,\n    title: job.name || null,\n    company: job._company,\n    location: locStr,\n    country: job._country,\n    contract_type: job.typeOfEmployment?.label || null,\n    category: job.function?.label || job._industry,\n    source: 'smartrecruiters',\n    job_url: job.ref || null,\n    posted_at: dateOnly(job.releasedDate),\n    collected_at: new Date().toISOString().split('T')[0],\n    salary_min: null,\n    salary_max: null\n  };\n}\n\n// Workable\nreturn {\n  source_id: job._source_id,\n  title: job.title || job.job_title || null,\n  company: job._company,\n  location: job.location?.city || job.location || null,\n  country: job._country,\n  contract_type: job.employment_type || job.type || null,\n  category: job.department || job._industry,\n  source: 'workable',\n  job_url: job.url || job.application_url || null,\n  posted_at: dateOnly(job.published_on || job.created_at),\n  collected_at: new Date().toISOString().split('T')[0],\n  salary_min: null,\n  salary_max: null\n};"
+      },
+      "id": "f823cfe2-2eba-4e44-ad58-73695d7baa65",
+      "name": "Normalize Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.job_url }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.title }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "a0bc883c-48a5-462c-b0d5-67214698a780",
+      "name": "Filter Valid Jobs",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "jobs",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source_id": "={{ $json.source_id }}",
+            "title": "={{ $json.title }}",
+            "company": "={{ $json.company }}",
+            "location": "={{ $json.location }}",
+            "country": "={{ $json.country }}",
+            "salary_min": "={{ $json.salary_min }}",
+            "salary_max": "={{ $json.salary_max }}",
+            "contract_type": "={{ $json.contract_type }}",
+            "category": "={{ $json.category }}",
+            "source": "={{ $json.source }}",
+            "job_url": "={{ $json.job_url }}",
+            "posted_at": "={{ $json.posted_at }}",
+            "collected_at": "={{ $json.collected_at }}"
+          },
+          "matchingColumns": [
+            "job_url"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "country",
+              "displayName": "country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "salary_min",
+              "displayName": "salary_min",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "salary_max",
+              "displayName": "salary_max",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "contract_type",
+              "displayName": "contract_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "job_url",
+              "displayName": "job_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "posted_at",
+              "displayName": "posted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "collected_at",
+              "displayName": "collected_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "is_active",
+              "displayName": "is_active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6019cad7-4897-44fc-a64a-df5c783e13e7",
+      "name": "Insert to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1664,
+        544
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 1) set fetched count per source for \"today\"\nUPDATE job_sources js\nSET\n  total_jobs_fetched = COALESCE(t.cnt, 0),\n  last_successful_fetch = CASE WHEN COALESCE(t.cnt, 0) > 0 THEN NOW() ELSE js.last_successful_fetch END,\n  consecutive_failures = CASE WHEN COALESCE(t.cnt, 0) > 0 THEN 0 ELSE js.consecutive_failures + 1 END,\n  status = CASE WHEN COALESCE(t.cnt, 0) > 0 THEN 'active' ELSE js.status END,\n  updated_at = NOW()\nFROM (\n  SELECT source_id, COUNT(*) AS cnt\n  FROM jobs\n  WHERE collected_at::date = CURRENT_DATE\n  GROUP BY source_id\n) t\nWHERE js.id = t.source_id\n  AND js.status IN ('active','broken');\n\n-- 2) for active sources that produced 0 jobs today, still update updated_at + keep total_jobs_fetched = 0\nUPDATE job_sources js\nSET\n  total_jobs_fetched = 0,\n  updated_at = NOW()\nWHERE js.status = 'active'\n  AND js.id NOT IN (\n    SELECT DISTINCT source_id\n    FROM jobs\n    WHERE collected_at::date = CURRENT_DATE\n      AND source_id IS NOT NULL\n  );\n",
+        "options": {}
+      },
+      "id": "3e5ff79a-27b6-4844-9c18-e354d7923e92",
+      "name": "Update Source Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2096,
+        544
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update source statistics\nconst successfulSources = new Set();\nconst totalJobs = $input.all().length;\n\n$input.all().forEach(item => {\n  if (item.json.source_id) {\n    successfulSources.add(item.json.source_id);\n  }\n});\n\nreturn [{\n  json: {\n    summary: 'Job Ingestion Complete',\n    sources_fetched: successfulSources.size,\n    jobs_collected: totalJobs,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "f73c25cf-d9ed-4d01-b1b9-730c3e54bc9c",
+      "name": "Create Summary2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (Run Once for All Items)\n\nfunction normalizeUrl(url) {\n  if (!url) return null;\n  return String(url).trim();\n}\n\nfunction detectFromUrl(url) {\n  const u = (url || \"\").toLowerCase();\n\n  const ghBoardMatch =\n    u.match(/greenhouse\\.io\\/(company|boards?)\\/([a-z0-9-_.]+)/i) ||\n    u.match(/boards\\.greenhouse\\.io\\/([a-z0-9-_.]+)/i);\n\n  if (ghBoardMatch) {\n    const slug = ghBoardMatch[2] || ghBoardMatch[1];\n    return {\n      ats_platform: \"greenhouse\",\n      api_endpoint: `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`,\n      confidence_score: 0.75,\n      notes: \"Detected Greenhouse board slug from careers URL\",\n    };\n  }\n\n  const leverMatch = u.match(/jobs\\.lever\\.co\\/([a-z0-9-_.]+)/i);\n  if (leverMatch) {\n    const slug = leverMatch[1];\n    return {\n      ats_platform: \"lever\",\n      api_endpoint: `https://api.lever.co/v0/postings/${slug}?mode=json`,\n      confidence_score: 0.8,\n      notes: \"Detected Lever slug from careers URL\",\n    };\n  }\n\n  const srMatch = u.match(/smartrecruiters\\.com\\/([a-z0-9-_.]+)/i);\n  if (srMatch) {\n    const company = srMatch[1];\n    return {\n      ats_platform: \"smartrecruiters\",\n      api_endpoint: `https://api.smartrecruiters.com/v1/companies/${company}/postings`,\n      confidence_score: 0.6,\n      notes: \"Detected SmartRecruiters candidate company slug from URL\",\n    };\n  }\n\n  const workableMatch = u.match(/apply\\.workable\\.com\\/([a-z0-9-_.]+)/i);\n  if (workableMatch) {\n    const account = workableMatch[1];\n    return {\n      ats_platform: \"workable\",\n      api_endpoint: `https://apply.workable.com/api/v1/widget/accounts/${account}?details=true`,\n      confidence_score: 0.7,\n      notes: \"Detected Workable account from apply.workable.com URL\",\n    };\n  }\n\n  return {\n    ats_platform: \"unknown\",\n    api_endpoint: null,\n    confidence_score: 0,\n    notes: \"No known ATS patterns detected from careers URL\",\n  };\n}\n\nreturn items.map((item) => {\n  const j = item.json;\n\n  const company_id = j.company_id ?? j.id;\n  const careers_url = normalizeUrl(j.careers_url);\n  const website = normalizeUrl(j.website);\n\n  const baseUrl = careers_url || website;\n  const detected = detectFromUrl(baseUrl || \"\");\n\n  let status = \"needs_review\";\n  if (detected.ats_platform !== \"unknown\" && detected.api_endpoint) status = \"pending\";\n\n  return {\n    json: {\n      company_id,\n      company: j.name,\n      careers_url,\n      website,\n      ats_platform: detected.ats_platform,\n      api_endpoint: detected.api_endpoint,\n      confidence_score: detected.confidence_score,\n      status,\n      notes: detected.notes,\n      error_message: null,\n    },\n  };\n});\n"
+      },
+      "id": "143961a1-e30f-4c75-b8e0-4e17b6827833",
+      "name": "Prepare job_sources candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "job_sources",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "company_id": "={{ $json.company_id }}",
+            "ats_platform": "={{ $json.ats_platform }}",
+            "api_endpoint": "={{ $json.api_endpoint }}",
+            "confidence_score": "={{ $json.confidence_score }}",
+            "status": "={{ $json.status }}",
+            "consecutive_failures": 0,
+            "total_jobs_fetched": 0
+          },
+          "matchingColumns": [
+            "company_id",
+            "ats_platform"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ats_platform",
+              "displayName": "ats_platform",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "api_endpoint",
+              "displayName": "api_endpoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_validated",
+              "displayName": "last_validated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_successful_fetch",
+              "displayName": "last_successful_fetch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "consecutive_failures",
+              "displayName": "consecutive_failures",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "total_jobs_fetched",
+              "displayName": "total_jobs_fetched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "df7c35e1-0a98-494f-a150-8de6c219d7f4",
+      "name": "Upsert job_sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1008,
+        -48
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM public.job_sources\nWHERE api_endpoint IS NOT NULL\nORDER BY last_validated ASC NULLS FIRST, id ASC;\n",
+        "options": {}
+      },
+      "id": "96b59c6a-059a-468c-85ec-846f3ab215a3",
+      "name": "Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        352,
+        224
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  js.id AS source_id,\n  js.company_id,\n  c.name AS company,\n  c.country,\n  c.industry,\n  js.ats_platform,\n  js.api_endpoint\nFROM job_sources js\nJOIN companies c ON c.id = js.company_id\nWHERE js.api_endpoint IS NOT NULL\n  AND js.ats_platform <> 'unknown'\n  AND js.status IN ('active', 'pending', 'needs_review', 'broken')\nORDER BY js.last_validated ASC NULLS FIRST, js.id ASC;\n",
+        "options": {}
+      },
+      "id": "65556f6c-6c82-4f83-8d4d-0a5e65bfa0c4",
+      "name": "Get Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        336,
+        544
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "bzr2b0krngq1Oyj3",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run Weekly": {
+      "main": [
+        [
+          {
+            "node": "Get Companies Needing Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Companies Needing Detection": {
+      "main": [
+        [
+          {
+            "node": "Prepare job_sources candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Upsert job_sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Active Sources": {
+      "main": [
+        [
+          {
+            "node": "Create Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Run Daily at 6 AM": {
+      "main": [
+        [
+          {
+            "node": "Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Endpoint Health": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Database": {
+      "main": [
+        [
+          {
+            "node": "Create Summary1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit1": {
+      "main": [
+        [
+          {
+            "node": "Update Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Jobs from API": {
+      "main": [
+        [
+          {
+            "node": "Merge Metadata",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Metadata": {
+      "main": [
+        [
+          {
+            "node": "Extract Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Jobs": {
+      "main": [
+        [
+          {
+            "node": "Normalize Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Jobs": {
+      "main": [
+        [
+          {
+            "node": "Insert to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert to Database": {
+      "main": [
+        [
+          {
+            "node": "Create Summary2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Summary2": {
+      "main": [
+        [
+          {
+            "node": "Update Source Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare job_sources candidates": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert job_sources": {
+      "main": [
+        [
+          {
+            "node": "Only Active Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sources": {
+      "main": [
+        [
+          {
+            "node": "Check Endpoint Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sources": {
+      "main": [
+        [
+          {
+            "node": "Fetch Jobs from API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4cc75e1f-2f5f-4974-9e83-4ef1a89104fb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "C5ELNsY1E5gzGFgR",
+  "tags": []
+}
