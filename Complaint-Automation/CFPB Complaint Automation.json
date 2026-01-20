@@ -1,0 +1,432 @@
+{
+  "name": "CFPB Complaint Automation - Local n8n Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "Mortgage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "6ef45c17-6528-41ce-836e-ebdc0062cf00"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "b61fe11b-cbe5-404b-91f0-6061db208ca3",
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "Credit Card",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "561129cd-4b84-447d-af7d-700674ac2a23",
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "General",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a674ae9b-f2e9-4ddc-978a-81a740485126",
+      "name": "Route Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -592,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4",
+          "mode": "list",
+          "cachedResultName": "n8n data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "aa08c84f-5390-4b32-b960-3935092eea17",
+      "name": "Mortgage Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -368,
+        624
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WRlti8ZuukrdEzob",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4",
+          "mode": "list",
+          "cachedResultName": "n8n data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 174367211,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit#gid=174367211"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null,
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "bf64b4c9-c679-4d38-b77f-b9e09823e58b",
+      "name": "Credit Card Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -368,
+        816
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WRlti8ZuukrdEzob",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4",
+          "mode": "list",
+          "cachedResultName": "n8n data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 298667660,
+          "mode": "list",
+          "cachedResultName": "Sheet3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit#gid=298667660"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "1b0a45b3-ada7-43ee-a0d1-eceac4addc40",
+      "name": "General Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -368,
+        1008
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WRlti8ZuukrdEzob",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "a8445ee5-a4c1-407d-9f0f-a079f5e3866c",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1840,
+        816
+      ],
+      "id": "416d8cdb-a458-4a8e-a5fb-767372198811",
+      "name": "Webhook",
+      "webhookId": "a8445ee5-a4c1-407d-9f0f-a079f5e3866c"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "body",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1616,
+        816
+      ],
+      "id": "aa16ba98-c56d-4ce6-9222-8876d1919bb2",
+      "name": "Split Out",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0c9da863-4c11-4786-89dd-7ac20850428d",
+              "leftValue": "={{ $json.complaint_what_happened }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1392,
+        816
+      ],
+      "id": "782c0cbf-d617-4185-8b5f-95154eacfedd",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1184,
+        832
+      ],
+      "id": "880eae5d-7b6f-48aa-b281-e47a11daa541",
+      "name": "Wait",
+      "webhookId": "2d4644e4-f21c-441c-82b6-04f0018d0176"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert in financial services operations. Read the 'Consumer complaint narrative' and classify it into one of these three strict categories: 'Mortgage Issue', 'Credit Card Problem', or 'General Inquiry'. Your response must be only one of those three options and nothing else.\n\nConsumer complaint narrative:\n{{ $json.complaint_what_happened }}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -944,
+        816
+      ],
+      "id": "14153876-57cc-40bb-8bd7-de5df37a2fa8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1072,
+        1024
+      ],
+      "id": "f4ded5c5-3bf7-4487-a921-1c445b9ca272",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "kBSPEHEii5OnXlDh",
+          "name": "OpenRouter account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Route Category": {
+      "main": [
+        [
+          {
+            "node": "Mortgage Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Credit Card Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "General Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Route Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "35d67466-1b38-4cdf-976c-5a4e41ef184c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "vQsU1MJK7Cdc2uTO",
+  "tags": []
+}
