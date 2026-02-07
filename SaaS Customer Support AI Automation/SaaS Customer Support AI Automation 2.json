@@ -1,0 +1,1018 @@
+{
+  "name": "SaaS Customer Support AI Automation 2",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": []
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -3200,
+        -208
+      ],
+      "id": "42e37a15-0326-4667-ac2a-fc273f5557b5",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eerLJl92yGUHi666",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9284bf2e-bc4b-46cc-9cde-747af025a071",
+              "name": "ticket_id",
+              "value": "={{$json.id}}",
+              "type": "string"
+            },
+            {
+              "id": "a2a66a30-7c9f-4650-a359-3ff1af72f364",
+              "name": "source",
+              "value": "email",
+              "type": "string"
+            },
+            {
+              "id": "67d85ef1-341b-471b-b0b6-0c4402524ab4",
+              "name": "customer_name",
+              "value": "={{ $json.From }}",
+              "type": "string"
+            },
+            {
+              "id": "2a5ce924-d7b0-46bb-ba6c-eab777ff1a82",
+              "name": "customer_email",
+              "value": "={{ $json.From }}",
+              "type": "string"
+            },
+            {
+              "id": "aeca9b7d-ee04-476b-9737-bb9bc4eb19d1",
+              "name": "message",
+              "value": "={{ $json.snippet }}",
+              "type": "string"
+            },
+            {
+              "id": "8c10ed83-0616-431b-829f-94737954087b",
+              "name": "timestamp",
+              "value": "={{$json.date}}",
+              "type": "string"
+            },
+            {
+              "id": "ab123456-7890-1234-5678-901234567890",
+              "name": "subject",
+              "value": "={{ $json.Subject }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2944,
+        -208
+      ],
+      "id": "568421c0-a8a2-4b2a-ad6e-231f450df986",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/support/chat",
+        "options": {
+          "responseData": "{\"status\": \"received\"}"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3200,
+        -16
+      ],
+      "id": "4af1a1bd-6f6e-4825-9f28-8dd8963a1dc3",
+      "name": "Webhook",
+      "webhookId": "0591e172-d789-4163-b2f5-c696530b0b73"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9284bf2e-bc4b-46cc-9cde-747af025a071",
+              "name": "ticket_id",
+              "value": "={{$json.email}}-{{$now}}",
+              "type": "string"
+            },
+            {
+              "id": "a2a66a30-7c9f-4650-a359-3ff1af72f364",
+              "name": "source",
+              "value": "webchat",
+              "type": "string"
+            },
+            {
+              "id": "67d85ef1-341b-471b-b0b6-0c4402524ab4",
+              "name": "customer_name",
+              "value": "={{$json.name || 'Customer'}}",
+              "type": "string"
+            },
+            {
+              "id": "2a5ce924-d7b0-46bb-ba6c-eab777ff1a82",
+              "name": "customer_email",
+              "value": "={{$json.email}}",
+              "type": "string"
+            },
+            {
+              "id": "aeca9b7d-ee04-476b-9737-bb9bc4eb19d1",
+              "name": "message",
+              "value": "={{$json.message}}",
+              "type": "string"
+            },
+            {
+              "id": "8c10ed83-0616-431b-829f-94737954087b",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            },
+            {
+              "id": "ab123456-7890-1234-5678-901234567890",
+              "name": "subject",
+              "value": "Web Chat Message",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2944,
+        -16
+      ],
+      "id": "68c71ae7-6d7a-4aee-8207-7be3348f42c8",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2688,
+        -128
+      ],
+      "id": "8bd3edf9-cc0f-4fd2-ab51-6c8584398d31",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b02a8650-22f8-4f58-ac90-cd86d3f8ce44",
+              "leftValue": "={{$json.message}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2480,
+        -128
+      ],
+      "id": "81c6556d-b47a-411c-b39f-672103758199",
+      "name": "Validate Message"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You classify customer support tickets.\n\nAllowed intent (choose EXACTLY ONE):\n- spam\n- complaint\n- question\n\nAllowed sentiment:\n- very_negative\n- negative\n- neutral\n- positive\n- very_positive\n\nAllowed urgency:\n- low\n- medium\n- high\n- critical\n\nRules:\n- Use exactly ONE of: spam, complaint, question\n- Do NOT invent new labels\n- No empty fields\n- Output ONLY one JSON object, no markdown, no explanation\n- Include confidence score (0.0 to 1.0) for intent classification\n\nRequired JSON format:\n{\n  \"intent\": \"complaint\",\n  \"sentiment\": \"negative\",\n  \"urgency\": \"high\",\n  \"confidence\": 0.95,\n  \"summary\": \"Customer reporting billing issue with duplicate charges\"\n}\n\nTicket:\nSource: {{$json.source}}\nFrom: {{$json.customer_name}} <{{$json.customer_email}}>\nSubject: {{$json.subject}}\nMessage:\n{{$json.message}}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -2784,
+        160
+      ],
+      "id": "0bb9de66-51ac-470b-8422-40924d61c406",
+      "name": "AI Agent - Classify"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize input: Perplexity returns ARRAY\nconst data = Array.isArray($json) ? $json[0] : $json;\n\nlet text = '';\n\n// Perplexity / OpenAI format\nif (data?.choices?.[0]?.message?.content) {\n  text = data.choices[0].message.content;\n}\n// n8n AI node format\nelse if (data.output) {\n  text = data.output;\n}\n// fallback\nelse if (data.message?.content) {\n  text = data.message.content;\n}\nelse if (data.content) {\n  text = data.content;\n}\n\nif (!text) {\n  throw new Error(\n    'No AI text found. Available keys: ' +\n    Object.keys(data || {}).join(', ')\n  );\n}\n\n// Remove <think> blocks and markdown fences\nlet clean = String(text)\n  .replace(/<think>[\\s\\S]*?<\\/think>/gi, '')\n  .replace(/```json|```/gi, '')\n  .trim();\n\n// Extract JSON\nconst match = clean.match(/\\{[\\s\\S]*\\}/);\nif (!match) {\n  throw new Error(\n    'No JSON object found. Got: ' +\n    clean.slice(0, 200)\n  );\n}\n\nconst obj = JSON.parse(match[0]);\n\n// Normalize intent\nconst intent = (obj.intent || '').toLowerCase().trim();\nif (intent === 'spam') obj.intent = 'spam';\nelse if (intent === 'complaint') obj.intent = 'complaint';\nelse obj.intent = 'question';\n\n// Defaults\nobj.confidence = obj.confidence ?? 0.5;\nobj.sentiment = obj.sentiment || 'neutral';\nobj.urgency = obj.urgency || 'medium';\nobj.summary = obj.summary || 'No summary provided';\n\nreturn [obj];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        -128
+      ],
+      "id": "25e45795-1be2-4cc5-9aa6-81704bc98cac",
+      "name": "Parse Classification"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "62517e1d-aa01-41f8-b115-045b810d3235",
+                    "leftValue": "={{$json.intent}}",
+                    "rightValue": "spam",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "spam"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "7db4e52d-d433-48ef-80d7-bc3957933c6d",
+                    "leftValue": "={{$json.intent}}",
+                    "rightValue": "complaint",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "complaint"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f1a2e6ad-2374-4d6f-b4f5-10a2ae0fa793",
+                    "leftValue": "={{$json.intent}}",
+                    "rightValue": "question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "question"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -1200,
+        -32
+      ],
+      "id": "82422269-506c-4e16-9768-ef9ea25a472e",
+      "name": "Route by Intent"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9ec08c51-e88a-4f2b-83fd-bded29effa10",
+              "name": "status",
+              "value": "needs_human_review",
+              "type": "string"
+            },
+            {
+              "id": "abc12345-6789-0abc-def0-123456789abc",
+              "name": "escalation_reason",
+              "value": "complaint",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -848,
+        -32
+      ],
+      "id": "9989c38e-a27e-4136-86c0-d7ecf97a4bae",
+      "name": "Set Status - Complaint"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9ec08c51-e88a-4f2b-83fd-bded29effa10",
+              "name": "status",
+              "value": "closed_spam",
+              "type": "string"
+            },
+            {
+              "id": "abc12345-6789-0abc-def0-123456789abc",
+              "name": "escalation_reason",
+              "value": "spam_detected",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -688,
+        -368
+      ],
+      "id": "06d6bffb-cf54-4354-928d-4dac40feaf4d",
+      "name": "Set Status - Spam"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "09fc056d-756f-462f-91fe-166e250d3a38",
+              "leftValue": "={{$json.urgency}}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -656,
+        -32
+      ],
+      "id": "227fe8d7-fb82-429d-a37a-b7b017307c79",
+      "name": "Check Urgency"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Gmail Trigger').item.json.From }}",
+        "subject": "We've received your complaint",
+        "message": "=Hi {{ $('Gmail Trigger').item.json.From }},\n\nThank you for contacting us. We've received your complaint regarding {{ $('Gmail Trigger').item.json.Subject }} and a member of our support team is now reviewing it.\n\nWe aim to respond with an update within 24 hours.\n\nIf you have any additional details or screenshots, you can reply to this email and they will be added to your case.\n\nTicket ID: {{ $('Gmail Trigger').item.json.id }}\n\nBest regards,\nSupport Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -384,
+        -144
+      ],
+      "id": "79c5a7e0-7c2b-44d6-95e8-1e86edae30b3",
+      "name": "Send Complaint Acknowledgment",
+      "webhookId": "48a1fdea-fd39-41b1-8761-d8d0e3a407c1",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eerLJl92yGUHi666",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "mohamedhisham855@gmail.com",
+        "subject": "🚨 URGENT TICKET: {{$json.intent}} - {{$json.customer_name}}",
+        "message": "=High-priority ticket escalated by automation.\n\n**Customer Information:**\nName: {{ $('Gmail Trigger').item.json.From }}\nEmail: {{$json.customer_email}}\nSource: {{$json.source}}\nTime: {{$json.timestamp}}\n\n**AI Classification:**\n- Intent: {{$json.intent}}\n- Urgency: {{$json.urgency}}\n- Sentiment: {{$json.sentiment}}\n- Confidence: {{$json.confidence}}\n\n**Subject:**\n{{ $('Gmail Trigger').item.json.Subject }}\n\n**Message:**\n{{ $('Gmail Trigger').item.json.snippet }}\n\n**Summary:**\n{{$json.summary}}\n\n---\n**Action Required:**\nPlease review and respond to the customer manually.\nTicket ID: {{ $('Gmail Trigger').item.json.id }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        160
+      ],
+      "id": "85d12889-c1bb-4139-9d19-ed1112ffb50d",
+      "name": "Alert Support Team",
+      "webhookId": "890e35e1-6af9-4326-9129-4621aa04e1da",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eerLJl92yGUHi666",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9ec08c51-e88a-4f2b-83fd-bded29effa10",
+              "name": "status",
+              "value": "needs_human_review",
+              "type": "string"
+            },
+            {
+              "id": "abc12345-6789-0abc-def0-123456789abc",
+              "name": "escalation_reason",
+              "value": "high_urgency",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        160
+      ],
+      "id": "3aa5d0ff-d6f1-479b-bee0-17c1e8ae05cb",
+      "name": "Set Status - Urgent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a professional SaaS support agent. Write a helpful, polite, and concise response to this customer message.\n\n**Customer Message:**\n\"{{$json.message}}\"\n\n**Context:**\n- Intent: {{$json.intent}}\n- Sentiment: {{$json.sentiment}}\n- Summary: {{$json.summary}}\n\n**Guidelines:**\n- Be friendly and professional\n- Address their specific question or concern\n- Keep the response under 150 words\n- Do not mention AI or automation\n- If you need more information, ask specific questions\n- Sign off as \"Support Team\"\n\nWrite only the email body, no subject line.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -32,
+        688
+      ],
+      "id": "31cbdf94-a108-4e88-b78c-c337db0fbd4c",
+      "name": "AI Agent - Generate Response"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Gmail Trigger').item.json.From }}",
+        "subject": "={{ $('Gmail Trigger').item.json.Subject }}",
+        "message": "=Hi {{ $('Edit Fields').item.json.customer_name || 'Customer' }},\n\n{{ $json.choices[0].message.content }}\n\nTicket ID: {{ $('Edit Fields').item.json.ticket_id }}\nBest regards,\nSupport Team\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        16,
+        432
+      ],
+      "id": "60f3ab91-5f48-421e-a579-8580fd93c41b",
+      "name": "Send AI Response",
+      "webhookId": "f4135a96-3449-4bec-9e9f-93d3b3279d96",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eerLJl92yGUHi666",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -32,
+        64
+      ],
+      "id": "c48b238d-c67b-4220-a002-ae8c4d320ac8",
+      "name": "Merge Escalations"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4",
+          "mode": "list",
+          "cachedResultName": "n8n CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "message": "={{$json.message}}"
+          },
+          "matchingColumns": [
+            "ticket_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        352,
+        64
+      ],
+      "id": "a898844f-ceed-447f-9746-ddca8aee9aee",
+      "name": "Log to Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WRlti8ZuukrdEzob",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "deepseek/deepseek-r1-0528-qwen3-8b",
+          "mode": "list",
+          "cachedResultName": "deepseek/deepseek-r1-0528-qwen3-8b"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "timeout": 1200000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -2832,
+        384
+      ],
+      "id": "ce6ea40d-67b9-42dc-bcad-2f40be53f617",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MqSrdUs74f14AweX",
+          "name": "OpenAi account 2"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "U0A40ULKSDP",
+          "mode": "list",
+          "cachedResultName": "mohamedhisham855"
+        },
+        "text": "=🚨 **New Critical Support Ticket**\n\n• **Customer:** {{$json.customer_name}} ({{$json.customer_email}})\n• **Source:** {{$json.source}}\n• **Intent:** {{$json.intent}}\n• **Urgency:** {{$json.urgency}}\n• **Sentiment:** {{$json.sentiment}}\n• **Confidence:** {{$json.confidence}}\n\n**Subject:** {{$json.subject}}\n\n**Message:** \"{{$json.message}}\"\n\n**Ticket ID:** {{$json.ticket_id}}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -272,
+        -368
+      ],
+      "id": "b1f95b4e-955c-4383-b5f0-4b737466627e",
+      "name": "Notify Slack",
+      "webhookId": "70587158-a0b2-4585-9b03-9e034c57aecc",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "GiO3Tj9Kt7s7Y2yY",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "deepseek/deepseek-r1-0528-qwen3-8b",
+          "mode": "list",
+          "cachedResultName": "deepseek/deepseek-r1-0528-qwen3-8b"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        896
+      ],
+      "id": "02cfa354-f71b-465e-860e-3745fc191faf",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "MqSrdUs74f14AweX",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "=You classify customer support tickets.\n\nAllowed intent (choose EXACTLY ONE):\n- spam\n- complaint\n- question\n\nAllowed sentiment:\n- very_negative\n- negative\n- neutral\n- positive\n- very_positive\n\nAllowed urgency:\n- low\n- medium\n- high\n- critical\n\nRules:\n- Use exactly ONE of: spam, complaint, question\n- Do NOT invent new labels\n- No empty fields\n- Output ONLY one JSON object, no markdown, no explanation\n- Include confidence score (0.0 to 1.0) for intent classification\n\nRequired JSON format:\n{\n  \"intent\": \"complaint\",\n  \"sentiment\": \"negative\",\n  \"urgency\": \"high\",\n  \"confidence\": 0.95,\n  \"summary\": \"Customer reporting billing issue with duplicate charges\"\n}\n\nTicket:\nSource: {{$json.source}}\nFrom: {{$json.customer_name}} <{{$json.customer_email}}>\nSubject: {{$json.subject}}\nMessage:\n{{$json.message}}"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        -2064,
+        -96
+      ],
+      "id": "08eedc41-1d79-488b-8c6e-db47bb217176",
+      "name": "Message a model",
+      "credentials": {
+        "perplexityApi": {
+          "id": "RVJccPujqTvmcnKG",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "=You are a professional SaaS support agent. Answer customer questions clearly and concisely.\n\n**Customer Question:** {{$json.message}}\n\n**Key Context:** \n{{$json.summary}}\n\n**Response Guidelines:**\n- Use bullet points for features/pricing/steps\n- Keep under 120 words\n- Friendly but professional tone\n- Clear next steps\n- **NO citations, links, or [1][2] references**\n- **NO double signatures**\n- End with \"Best regards, Support Team\"\n\nWrite ONLY the email body content (no subject, no extra formatting).\n"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        432
+      ],
+      "id": "db3ce898-b91e-4bab-8021-0b52281f444c",
+      "name": "Message a model1",
+      "credentials": {
+        "perplexityApi": {
+          "id": "RVJccPujqTvmcnKG",
+          "name": "Perplexity account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Validate Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Message": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Classify": {
+      "main": [
+        []
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "Set Status - Spam",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Status - Complaint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status - Spam": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status - Complaint": {
+      "main": [
+        [
+          {
+            "node": "Check Urgency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Urgency": {
+      "main": [
+        [
+          {
+            "node": "Set Status - Urgent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Complaint Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status - Urgent": {
+      "main": [
+        [
+          {
+            "node": "Alert Support Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Complaint Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "Merge Escalations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Support Team": {
+      "main": [
+        [
+          {
+            "node": "Merge Escalations",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "AI Agent - Generate Response": {
+      "main": [
+        []
+      ]
+    },
+    "Send AI Response": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Escalations": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Classify",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Generate Response",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Send AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2ab499b8-a01a-4b3e-8408-54605bb1ce00",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "MhC8fvSsaVIokq5X",
+  "tags": []
+}
