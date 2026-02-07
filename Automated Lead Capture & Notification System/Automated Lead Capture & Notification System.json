@@ -1,0 +1,282 @@
+{
+  "name": "Automated Lead Capture & Notification System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture",
+        "options": {
+          "noResponseBody": false,
+          "responseData": "JSON"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        16,
+        64
+      ],
+      "id": "263278cb-87cc-4107-a21c-3934632951b2",
+      "name": "Webhook",
+      "webhookId": "2fa1e502-4d8a-435a-8a97-161adb43ddac"
+    },
+    {
+      "parameters": {
+        "chatId": "1982389908",
+        "text": "=New Lead Received! \nName: {{ $json.fields.Name }}\nEmail: {{ $json.fields.Email }}\nPhone: {{ $json.fields.Phone }}\nMessage: {{ $json.fields.Message }}\n",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        64
+      ],
+      "id": "544b2b17-90f7-4431-ab13-3fac6a54e4d3",
+      "name": "Send a text message",
+      "webhookId": "3aece340-2c6c-49c9-967c-c4e1a67fb32e",
+      "credentials": {
+        "telegramApi": {
+          "id": "8cxTdHcuTZ3fdwvV",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appalRUWhlohm8JG9",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbll1FJIBEHQarja8",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9/tbll1FJIBEHQarja8"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead Source": "Lead Source",
+            "Name": "={{ $json.body.data.fields[0].value }}",
+            "Email": "={{ $json.body.data.fields[1].value }}",
+            "Phone": "={{ $json.body.data.fields[2].value }}",
+            "Message": "={{ $json.body.data.fields[3].value }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Assignee",
+              "displayName": "Assignee",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Todo",
+                  "value": "Todo"
+                },
+                {
+                  "name": "In progress",
+                  "value": "In progress"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Attachments",
+              "displayName": "Attachments",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Attachment Summary",
+              "displayName": "Attachment Summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Lead Source",
+              "displayName": "Lead Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        496,
+        64
+      ],
+      "id": "772545d0-b88d-4ccb-9ac5-eeda28398f1c",
+      "name": "Create a record",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "qkyGi3Mi6fdJynB1",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the Tally fields array\nconst fields = items[0].json.body?.data?.fields || [];\n\n// Helper function to extract value by label\nconst getField = (label) => {\n  const field = fields.find(f => f.label === label);\n  return field ? field.value : \"\";\n};\n\n// Set new JSON keys\nitems[0].json.full_name = getField(\"Name\");\nitems[0].json.email     = getField(\"What is your Email\");\nitems[0].json.phone     = getField(\"Phone Number\");\nitems[0].json.message   = getField(\"Leave a Message\");\nitems[0].json.status    = \"New\";\n\n// Return items\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        64
+      ],
+      "id": "34a5343e-a37f-4cbf-aae1-6b4d6f484a26",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a record": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "04183481-e212-4008-b14e-d8185e0819ee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "qaBZlioKUlpqarVO",
+  "tags": []
+}
