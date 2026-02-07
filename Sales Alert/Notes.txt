@@ -1,0 +1,139 @@
+📌 Project Notes
+Automated Sales Performance Alert (n8n)
+Project Overview
+
+This project is an automated sales monitoring and alert system built using n8n, designed to help sales and management teams track daily performance and receive instant alerts when sales fall below a defined threshold.
+
+The workflow runs on a schedule, analyzes sales data from Google Sheets, and automatically notifies stakeholders via Telegram if performance issues are detected.
+
+🎯 Objectives
+
+Monitor daily sales performance automatically
+
+Detect underperformance without manual checks
+
+Provide real-time alerts to decision-makers
+
+Improve response time to declining sales trends
+
+Reduce dependency on manual reporting
+
+⏰ Trigger & Scheduling
+
+Schedule Trigger runs the workflow daily at 18:00
+
+Ensures consistent end-of-day performance evaluation
+
+Fully automated, no manual intervention required
+
+📊 Data Source
+
+Google Sheets used as the sales data source
+
+Workflow reads all rows from a specified sheet
+
+Sales data includes categories and sales values
+
+🧮 Data Processing Logic
+
+JavaScript code aggregates sales data
+
+Filters sales by Technology category
+
+Calculates total Technology sales for the day
+
+Outputs a single summarized result for evaluation
+
+🔍 Business Rules & Conditions
+
+A predefined sales threshold is applied:
+
+Alert condition: Total Technology Sales < $50,000
+
+Conditional logic determines whether an alert is required
+
+Prevents unnecessary notifications when performance is healthy
+
+🚨 Alerts & Notifications
+
+When the sales threshold is not met:
+
+A Telegram alert is sent automatically
+
+Message includes:
+
+Total Technology sales value
+
+Clear warning indicator
+
+Action prompt to review performance
+
+This enables fast decision-making and immediate corrective action.
+
+📱 Notification Channel
+
+Telegram Bot used for real-time alerts
+
+Ideal for mobile-first monitoring
+
+Ensures alerts are seen quickly by managers and sales teams
+
+🛠 Technical Highlights
+
+Scheduled automation using cron expressions
+
+Data aggregation with JavaScript inside n8n
+
+Category-based filtering logic
+
+Threshold-based conditional alerts
+
+Lightweight, fast, and low-cost solution
+
+Easily adjustable thresholds and categories
+
+🔒 Reliability & Simplicity
+
+Deterministic logic (no AI dependency)
+
+Minimal external dependencies
+
+Easy to debug and maintain
+
+Predictable execution and outputs
+
+📈 Business Impact
+
+Early detection of sales underperformance
+
+Reduced reporting overhead
+
+Improved sales accountability
+
+Faster management response to declining trends
+
+Scalable monitoring for additional categories or regions
+
+🔮 Future Improvements (Optional)
+
+Add multiple category thresholds
+
+Store historical alerts for trend analysis
+
+Integrate Slack or email notifications
+
+Add weekly or monthly summary reports
+
+Visualize sales trends using dashboards
+
+✅ Use Cases
+
+Daily sales performance monitoring
+
+Management alert systems
+
+KPI tracking automations
+
+Retail and SaaS sales teams
+
+Operations and finance reporting
