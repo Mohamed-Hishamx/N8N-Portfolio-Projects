@@ -1,0 +1,167 @@
+{
+  "name": "Task Tracker - WhatsApp Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1424,
+        -64
+      ],
+      "id": "80eb71ce-ce81-420a-b4b3-8ab1e66b30d4",
+      "notes": "Runs Monday-Friday at 9 AM"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4",
+          "mode": "list",
+          "cachedResultName": "n8n data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QXxPkwBWv36umb3a-Vu5kw95Hk0vX1Qu68n_cws_EO4/edit#gid=0"
+        },
+        "options": {}
+      },
+      "name": "Google Sheets - Read Tasks",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -1200,
+        -64
+      ],
+      "id": "eb478126-cc9d-476e-a6ae-510a2c47bc48",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WRlti8ZuukrdEzob",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter incomplete tasks and group by staff member\nconst items = $input.all();\nconst today = new Date();\nconst staffTasks = {};\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip header row and completed tasks\n  if (data.Status === 'Status' || data.Status === 'Complete' || data.Status === 'Completed') {\n    continue;\n  }\n  \n  // Skip if missing required fields\n  if (!data['Staff Name'] || !data['Phone Number'] || !data['Task Description']) {\n    continue;\n  }\n  \n  const staffName = data['Staff Name'].trim();\n  const phone = data['Phone Number'].toString().trim();\n  const task = data['Task Description'].trim();\n  const dueDate = data['Due Date'] ? data['Due Date'].trim() : 'No due date';\n  const status = data.Status || 'Pending';\n  \n  // Initialize staff member if not exists\n  if (!staffTasks[phone]) {\n    staffTasks[phone] = {\n      name: staffName,\n      phone: phone,\n      tasks: []\n    };\n  }\n  \n  // Add task to staff member's list\n  staffTasks[phone].tasks.push({\n    description: task,\n    dueDate: dueDate,\n    status: status\n  });\n}\n\n// Convert to array format for N8N\nconst output = Object.values(staffTasks).map(staff => ({\n  json: {\n    staffName: staff.name,\n    phoneNumber: staff.phone,\n    taskCount: staff.tasks.length,\n    tasks: staff.tasks\n  }\n}));\n\nreturn output;"
+      },
+      "name": "Process & Group Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        -64
+      ],
+      "id": "2f1f947d-d34a-49bc-8d09-eb0214db5754"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format WhatsApp message for each staff member\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  const { staffName, phoneNumber, taskCount, tasks } = item.json;\n  \n  // Build task list\n  let taskList = '';\n  tasks.forEach((task, index) => {\n    taskList += `${index + 1}. ${task.description}\\n   📅 Due: ${task.dueDate}\\n\\n`;\n  });\n  \n  // Build complete message\n  const message = `Hi ${staffName},\\n\\nYou have ${taskCount} pending task(s) for this week:\\n\\n${taskList}Please update your progress in the tracker.\\n\\nThank you! 🙏`;\n  \n  output.push({\n    json: {\n      phoneNumber: phoneNumber,\n      message: message,\n      staffName: staffName\n    }\n  });\n}\n\nreturn output;"
+      },
+      "name": "Format WhatsApp Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -64
+      ],
+      "id": "303cd065-3834-4bb9-b26c-a50a79218879"
+    },
+    {
+      "parameters": {
+        "from": "+14155238886",
+        "to": "+201144281251",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "name": "Send WhatsApp (Twilio)",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -64
+      ],
+      "id": "ca1f14c2-0ac0-4467-8c6f-ccfd7c491776",
+      "credentials": {
+        "twilioApi": {
+          "id": "bla7l9nReK0fdI4I",
+          "name": "Twilio account"
+        }
+      },
+      "notes": "Option 2: Twilio WhatsApp API"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Read Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Read Tasks": {
+      "main": [
+        [
+          {
+            "node": "Process & Group Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process & Group Tasks": {
+      "main": [
+        [
+          {
+            "node": "Format WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp (Twilio)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b3d9b5ac-e630-48c4-bfa0-991d80d98ad6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+  },
+  "id": "kzPsqrptqDQC5r3M",
+  "tags": []
+}
