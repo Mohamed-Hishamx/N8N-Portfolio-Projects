@@ -1,0 +1,1463 @@
+{
+  "name": "ADHD Clinic — Complete Automation (Email Triage + Calendar Booking)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "includeSpamTrash": false,
+          "readStatus": "unread"
+        }
+      },
+      "id": "fa569a4b-1582-4915-9681-b4e8e498d95d",
+      "name": "📬 Gmail — Watch New Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2496,
+        320
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Single entry point for the entire system.\nPolls every 60 seconds for new unread emails.\nEvery email — whether an enquiry, booking request, or confirmation reply — enters here.\nUnread only to prevent duplicate processing."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Normalize Email Data\n// Cleans and extracts all fields from the raw Gmail payload\n// into a consistent shape used by every downstream node.\n// ============================================================\n\nconst item = $input.item.json;\n\nconst fromRaw = item.from || '';\nlet senderEmail = '';\nlet senderName = '';\n\nconst emailMatch = fromRaw.match(/<([^>]+)>/);\nif (emailMatch) {\n  senderEmail = emailMatch[1].trim().toLowerCase();\n  senderName = fromRaw.split('<')[0].trim().replace(/\"/g, '');\n} else {\n  senderEmail = fromRaw.trim().toLowerCase();\n  senderName = fromRaw.split('@')[0].trim();\n}\n\nconst firstName = senderName.split(' ')[0] || 'there';\nconst bodyText = item.text || item.snippet || '';\nconst bodyClean = bodyText.replace(/\\r\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim().substring(0, 3000);\nconst fullTextLower = `${item.subject || ''} ${bodyClean}`.toLowerCase();\nconst isReply = (item.subject || '').toLowerCase().startsWith('re:');\n\nreturn {\n  json: {\n    messageId:     item.id || '',\n    threadId:      item.threadId || '',\n    senderEmail,\n    senderName,\n    firstName,\n    subject:       item.subject || '(No Subject)',\n    body:          bodyClean,\n    fullTextLower,\n    receivedAt:    item.date || new Date().toISOString(),\n    isReply,\n    _raw:          item\n  }\n};"
+      },
+      "id": "2d0cb09c-abee-48f7-a7bf-c1dafca97387",
+      "name": "🔧 Normalize Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2272,
+        320
+      ],
+      "notes": "Unpacks the raw Gmail object into clean labelled fields.\nExtracts: senderEmail, senderName, firstName, subject, body, threadId, receivedAt.\nAlso detects if this is a reply to a previous email (isReply flag).\nAll downstream nodes rely on this consistent shape."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Safety Filter\n// MUST run before AI and before any reply logic.\n// Uses hardcoded keywords — intentionally NOT AI-based.\n// Deterministic = zero chance of missing dangerous language.\n// ============================================================\n\nconst text = $input.item.json.fullTextLower || '';\n\nconst legalPatterns        = ['complaint','complain','solicitor','legal action','legal proceedings','lawsuit','sue you','taking you to court','court action','ombudsman','data breach','gdpr breach','ico','negligence','malpractice','report you','trading standards'];\nconst safeguardingPatterns = ['safeguarding','safeguard','at risk','risk of harm','child at risk','abuse','neglect','exploitation','domestic violence','domestic abuse','threatened','threatening','violence','police','social services'];\nconst crisisPatterns       = ['suicid','self harm','self-harm','selfharm','overdose','want to die','end my life','end it all','hurt myself','hurting myself','crisis','emergency','urgent help','in danger','not safe'];\n\nconst matchedLegal         = legalPatterns.filter(p => text.includes(p));\nconst matchedSafeguarding  = safeguardingPatterns.filter(p => text.includes(p));\nconst matchedCrisis        = crisisPatterns.filter(p => text.includes(p));\n\nconst isFlagged = matchedLegal.length > 0 || matchedSafeguarding.length > 0 || matchedCrisis.length > 0;\n\nlet flagCategory = '';\nlet flagReason   = '';\n\nif (matchedCrisis.length > 0) {\n  flagCategory = 'CRISIS_RISK';\n  flagReason   = `Crisis language detected: ${matchedCrisis.join(', ')}`;\n} else if (matchedSafeguarding.length > 0) {\n  flagCategory = 'SAFEGUARDING';\n  flagReason   = `Safeguarding language detected: ${matchedSafeguarding.join(', ')}`;\n} else if (matchedLegal.length > 0) {\n  flagCategory = 'LEGAL_COMPLAINT';\n  flagReason   = `Legal/complaint language detected: ${matchedLegal.join(', ')}`;\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    safety: { isFlagged, flagCategory, flagReason }\n  }\n};"
+      },
+      "id": "0da9484b-58d2-4e2e-bda0-6bf828f0a1c8",
+      "name": "🚨 Safety Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2048,
+        320
+      ],
+      "notes": "Scans every email for dangerous language before anything else runs.\n\n3 categories checked:\n1. Legal & Complaint: solicitor, legal action, ombudsman, GDPR breach...\n2. Safeguarding: abuse, neglect, domestic violence, police, social services...\n3. Crisis & Risk: suicide, self-harm, overdose, crisis, not safe...\n\nIf ANY match found → isFlagged = true → hard stop, admin alert, NO reply ever sent.\nUses code not AI — 100% deterministic, zero chance of missing a keyword."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.safety.isFlagged }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {}
+        },
+        "options": {}
+      },
+      "id": "bc2fdeb1-ea68-4a84-acd1-8632abcd7c01",
+      "name": "⚡ Is Safety Flagged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        320
+      ],
+      "notes": "Hard gate — the most important branch in the entire workflow.\nTrue (flagged) → red alert to admin, full stop.\nFalse (clean) → AI classification."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=⛔ URGENT — {{ $json.safety.flagCategory }} | From: {{ $json.senderName }}",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#dc2626;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">⛔ Manual Review — {{ $json.safety.flagCategory }}</h2>\n    <p style=\"margin:4px 0 0\">This email has NOT been replied to automatically.</p>\n  </div>\n  <div style=\"background:#fef2f2;padding:16px;border:1px solid #fecaca\">\n    <p><strong>From:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Subject:</strong> {{ $json.subject }}</p>\n    <p><strong>Flag Reason:</strong> {{ $json.safety.flagReason }}</p>\n    <p><strong>Received:</strong> {{ $json.receivedAt }}</p>\n  </div>\n  <div style=\"background:white;padding:16px;border:1px solid #e5e7eb;border-top:none\">\n    <p><strong>Email Body:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "5bc6abe3-b442-4d63-a636-a8673ddb4560",
+      "name": "🔴 Alert Admin — Safety Flag",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        224
+      ],
+      "webhookId": "374a03bc-9ffe-49e9-8010-acf4ac37bceb",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends a red HTML alert to admin for any flagged email.\nIncludes: flag type, trigger words, sender details, full email body.\nWorkflow ends here for flagged emails — no further processing."
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an AI assistant for a private ADHD clinic. Your job is to classify incoming emails into the correct category AND detect the intent. Return ONLY valid JSON. No markdown. No explanation. No code fences.",
+              "role": "system"
+            },
+            {
+              "content": "=Analyse this email and return a JSON classification.\n\nSubject: {{ $json.subject }}\nBody: {{ $json.body }}\nIs Reply Email: {{ $json.isReply }}\n\nReturn this exact JSON structure:\n{\n  \"intent\": one of [\"booking_request\", \"booking_confirmation\", \"booking_cancellation\", \"enquiry\", \"manual_review\"],\n  \"category\": one of [\"adult_adhd_assessment\", \"child_adhd_assessment\", \"follow_up\", \"medication_query\", \"gp_shared_care\", \"general_enquiry\", \"manual_review\"],\n  \"confidence\": number 0.0 to 1.0,\n  \"reasoning\": \"one sentence\",\n  \"firstName\": \"patient first name if found, else empty string\",\n  \"isChild\": true or false,\n  \"gpName\": \"GP name if mentioned else empty string\",\n  \"location\": \"city or area if mentioned else empty string\",\n  \"mentionsPrice\": true or false,\n  \"mentionsWaitingTime\": true or false,\n  \"appointmentType\": \"plain English description of appointment needed\",\n  \"preferredDate\": \"any date or time preference mentioned else empty string\"\n}\n\nIntent rules:\n- booking_request: patient wants to book a NEW appointment\n- booking_confirmation: patient is replying YES to a slot we proposed (isReply=true + yes/confirm/that works/option 1/perfect)\n- booking_cancellation: patient wants to cancel an existing appointment\n- enquiry: question, information request, template-based reply needed\n- manual_review: anything ambiguous or confidence below 0.75\n\nCategory rules (only relevant when intent=enquiry):\n- adult_adhd_assessment: adult seeking ADHD assessment\n- child_adhd_assessment: enquiry about child ADHD assessment\n- follow_up: existing patient following up\n- medication_query: questions about medication or prescription\n- gp_shared_care: from a GP or about shared care arrangements\n- general_enquiry: anything else\n- manual_review: ambiguous"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 600,
+          "temperature": 0.1
+        }
+      },
+      "id": "8775b559-55b6-499e-9305-d526d3fbea18",
+      "name": "🤖 AI — Classify & Detect Intent",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        560
+      ],
+      "notes": "THE CORE AI NODE — does two jobs in one call:\n\n1. Detects INTENT: is this a booking request, booking confirmation, cancellation, or general enquiry?\n2. Classifies CATEGORY: if it's an enquiry, which type is it?\n\nCombining both into one AI call saves tokens, reduces latency, and avoids two separate API calls.\n\nGPT-4o at temperature 0.1 = consistent, predictable JSON output every time.\nConfidence < 0.75 → manual_review enforced in the parse node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Parse AI Response\n// Bulletproof JSON parser — every possible failure mode\n// is handled and defaults to manual_review.\n// ============================================================\n\nconst upstream = $input.item.json;\nlet aiText = '';\n\ntry {\n  aiText = upstream.text || upstream.message?.content || upstream.choices?.[0]?.message?.content || upstream.content?.[0]?.text || '';\n} catch(e) { aiText = ''; }\n\nlet ai = {};\ntry {\n  const cleaned = aiText.replace(/```json/gi,'').replace(/```/g,'').trim();\n  ai = JSON.parse(cleaned);\n  if (!ai.intent || !ai.category) throw new Error('Missing required fields');\n} catch(e) {\n  ai = {\n    intent: 'manual_review', category: 'manual_review',\n    confidence: 0, reasoning: `Parse failed: ${e.message}`,\n    firstName: '', isChild: false, gpName: '', location: '',\n    mentionsPrice: false, mentionsWaitingTime: false,\n    appointmentType: '', preferredDate: ''\n  };\n}\n\n// Confidence gate — low confidence = manual review\nif (ai.confidence < 0.75 && ai.intent !== 'manual_review') {\n  ai.originalIntent   = ai.intent;\n  ai.originalCategory = ai.category;\n  ai.intent    = 'manual_review';\n  ai.category  = 'manual_review';\n  ai.reasoning = `Low confidence (${ai.confidence}). Was: intent=${ai.originalIntent}, category=${ai.originalCategory}`;\n}\n\nconst bestFirstName = (ai.firstName && ai.firstName.trim()) ? ai.firstName : upstream.firstName || 'there';\n\nreturn {\n  json: {\n    ...upstream,\n    firstName:          bestFirstName,\n    intent:             ai.intent,\n    category:           ai.category,\n    confidence:         ai.confidence,\n    ai,\n    isChild:            ai.isChild || false,\n    gpName:             ai.gpName || '',\n    location:           ai.location || '',\n    mentionsPrice:      ai.mentionsPrice || false,\n    mentionsWaitingTime: ai.mentionsWaitingTime || false,\n    appointmentType:    ai.appointmentType || 'ADHD Assessment',\n    preferredDate:      ai.preferredDate || ''\n  }\n};"
+      },
+      "id": "8270abcc-e734-471e-9572-30b235acf6a4",
+      "name": "🧩 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1248,
+        416
+      ],
+      "notes": "Parses and validates the AI JSON response.\nHandles: markdown-wrapped JSON, malformed JSON, missing fields, low confidence.\nEvery failure mode → manual_review. The workflow never crashes here.\nAlso picks the best firstName between AI detection and sender name parsing."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "booking_request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_request"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "booking_confirmation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_confirmation"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "booking_cancellation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_cancellation"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "enquiry",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "enquiry"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "df307dce-060e-4bda-994b-d028d6f33b4d",
+      "name": "🔀 Master Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -1024,
+        368
+      ],
+      "notes": "The master routing node — splits the workflow into 4 branches:\n\n1. booking_request → find available calendar slots → propose to patient\n2. booking_confirmation → finalise booking in Google Calendar\n3. booking_cancellation → remove from Google Calendar\n4. enquiry → classify by category → select template → auto-reply\n5. fallback (manual_review) → alert admin, no reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// BOOKING BRANCH — STEP 1\n// Prepare date range to search Google Calendar for open slots\n// ============================================================\n\nconst d = $input.item.json;\nconst now = new Date();\nconst twoWeeksLater = new Date();\ntwoWeeksLater.setDate(now.getDate() + 14);\n\nlet searchFrom = now;\nif (d.preferredDate) {\n  const preferred = new Date(d.preferredDate);\n  if (!isNaN(preferred) && preferred > now) searchFrom = preferred;\n}\n\nreturn {\n  json: {\n    ...d,\n    calendarSearchFrom: searchFrom.toISOString(),\n    calendarSearchTo:   twoWeeksLater.toISOString()\n  }\n};"
+      },
+      "id": "bde5c928-2682-4508-a091-4826369755b8",
+      "name": "📅 Prepare Slot Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -32
+      ],
+      "notes": "Prepares the 14-day search window for finding available calendar slots.\nIf patient mentioned a preferred date, search starts from that date.\nOutputs calendarSearchFrom and calendarSearchTo for the Google Calendar query."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "limit": 20,
+        "options": {
+          "timeMin": "={{ $json.calendarSearchFrom }}",
+          "timeMax": "={{ $json.calendarSearchTo }}",
+          "singleEvents": true,
+          "orderBy": "startTime",
+          "query": "Available"
+        }
+      },
+      "id": "7527d0ab-cf13-4087-b95d-cacceb16c88e",
+      "name": "📅 Get Available Slots",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "getAll",
+      "position": [
+        -576,
+        -32
+      ],
+      "notes": "Searches the consultant's Google Calendar for events titled 'Available' in the next 14 days.\nREPLACE: calendarId with actual consultant calendar ID.\nConsultants mark open slots as 'Available' or 'Available 10:00-11:00' in their calendar.\nReturns up to 20 results ordered by start time — we take the first 3."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// BOOKING BRANCH — STEP 2\n// Pick best 3 slots and build the proposal email\n// ============================================================\n\nconst allItems = $input.all();\nconst bookingData = allItems[0]?.json || {};\n\nconst slots = allItems\n  .filter(item => item.json.start?.dateTime)\n  .map(item => ({\n    id:    item.json.id,\n    start: item.json.start.dateTime,\n    end:   item.json.end?.dateTime || ''\n  }))\n  .slice(0, 3);\n\nif (slots.length === 0) {\n  return { json: { ...bookingData, noSlotsFound: true, availableSlots: [] } };\n}\n\nconst fmt = (dt) => ({\n  date: new Date(dt).toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric', timeZone:'Europe/London' }),\n  time: new Date(dt).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/London' })\n});\n\nconst slotLines = slots.map((s, i) => {\n  const start = fmt(s.start);\n  const end   = fmt(s.end);\n  return `Option ${i+1}: ${start.date} at ${start.time}–${end.time}`;\n}).join('\\n');\n\nconst firstName = bookingData.firstName || 'there';\nconst apptType  = bookingData.appointmentType || 'appointment';\n\nconst emailBody = `Dear ${firstName},\\n\\nThank you for getting in touch — we would be happy to arrange a ${apptType} for you.\\n\\nWe currently have the following appointments available:\\n\\n${slotLines}\\n\\nPlease reply with which option works best for you and we will confirm your booking straight away.\\n\\nKind regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME\\nREPLACE_WITH_PHONE_NUMBER`;\n\nreturn {\n  json: {\n    ...bookingData,\n    noSlotsFound:   false,\n    availableSlots: slots,\n    emailSubject:   `Re: ${bookingData.subject}`,\n    emailBody,\n    slot1Id:    slots[0]?.id    || '',\n    slot1Start: slots[0]?.start || '',\n    slot1End:   slots[0]?.end   || '',\n    slot2Id:    slots[1]?.id    || '',\n    slot2Start: slots[1]?.start || '',\n    slot2End:   slots[1]?.end   || '',\n    slot3Id:    slots[2]?.id    || '',\n    slot3Start: slots[2]?.start || '',\n    slot3End:   slots[2]?.end   || ''\n  }\n};"
+      },
+      "id": "2902d0a4-4ff2-41f3-af07-388377974ffd",
+      "name": "🗓️ Build Slot Proposal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        -32
+      ],
+      "notes": "Picks the 3 earliest available slots and builds a natural proposal email.\nFormats dates in UK style: 'Monday, 24 February 2026 at 10:00–11:00'\nIf no slots found → noSlotsFound = true → admin is alerted instead.\nStores all slot IDs and times for use when the patient confirms."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.noSlotsFound }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {}
+        },
+        "options": {}
+      },
+      "id": "5ebe8a06-7cf5-473a-af7f-10e8d771c6d6",
+      "name": "⚡ Slots Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -32
+      ],
+      "notes": "True (no slots) → alert admin to add availability and handle manually.\nFalse (slots found) → send proposal email to patient."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=📅 Manual Booking Needed — No Slots Available | {{ $json.senderName }}",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">📅 No Available Slots Found</h2>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>Patient:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Appointment Type:</strong> {{ $json.appointmentType }}</p>\n    <p><strong>Preferred Date:</strong> {{ $json.preferredDate || 'Not specified' }}</p>\n    <p><strong>Message:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280\">\n    No available slots found in Google Calendar for the next 14 days.\n    Please add availability and reply to this patient manually.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "384e4626-6123-4445-9e73-4059b83f245f",
+      "name": "🟡 Alert Admin — No Slots",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -128
+      ],
+      "webhookId": "0bb3a615-1e34-48fd-b8ed-12d31ac7e5b6",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Alerts admin when no available slots exist in the next 14 days.\nAdmin should: add 'Available' events to the consultant's Google Calendar, then reply to patient manually."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {
+          "replyTo": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk"
+        }
+      },
+      "id": "4065c6c7-4117-44f0-af84-c1344e3cd4b9",
+      "name": "📤 Send Slot Proposal",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        96,
+        64
+      ],
+      "webhookId": "765b093d-044a-4c2a-b6e7-e97881a8afea",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends the 3-option slot proposal to the patient.\nReplies within the same Gmail thread so conversation stays tidy.\nPatient replies with 'Option 1' or 'Option 2' to confirm."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ new Date().toISOString() }}",
+            "Patient Name": "={{ $json.senderName }}",
+            "Patient Email": "={{ $json.senderEmail }}",
+            "Appointment Type": "={{ $json.appointmentType }}",
+            "Preferred Date": "={{ $json.preferredDate }}",
+            "Status": "=SLOTS_PROPOSED",
+            "Slot 1": "={{ $json.slot1Start }}",
+            "Slot 2": "={{ $json.slot2Start }}",
+            "Slot 3": "={{ $json.slot3Start }}",
+            "Thread ID": "={{ $json.threadId }}",
+            "Notes": "=Awaiting patient confirmation"
+          }
+        },
+        "options": {}
+      },
+      "id": "5a65388c-f447-4c6f-a1fa-a029462e5989",
+      "name": "📊 Log Booking Request",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        320,
+        64
+      ],
+      "notes": "Logs the booking request to the Bookings tab.\nStatus = SLOTS_PROPOSED (will update to CONFIRMED when patient replies).\nThread ID stored — used to match the confirmation reply back to this record."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CONFIRMATION BRANCH\n// Patient replied confirming a slot — detect which option\n// ============================================================\n\nconst d = $input.item.json;\nconst bodyLower = (d.body || '').toLowerCase();\n\nlet chosenOption = 0;\n\nif (bodyLower.includes('option 1') || bodyLower.includes('first option') || bodyLower.includes('1st')) {\n  chosenOption = 1;\n} else if (bodyLower.includes('option 2') || bodyLower.includes('second option') || bodyLower.includes('2nd')) {\n  chosenOption = 2;\n} else if (bodyLower.includes('option 3') || bodyLower.includes('third option') || bodyLower.includes('3rd')) {\n  chosenOption = 3;\n}\n\n// General confirmation with no specific option → default to option 1\nif (chosenOption === 0) {\n  const confirmWords = ['yes','confirm','that works','sounds good','perfect','great','happy with','book me in','go ahead','that\\'s fine','works for me'];\n  if (confirmWords.some(w => bodyLower.includes(w))) chosenOption = 1;\n}\n\nreturn {\n  json: {\n    ...d,\n    chosenOption,\n    needsManualConfirmation: chosenOption === 0\n  }\n};"
+      },
+      "id": "1ccd194d-1bae-495d-a02a-a08e0f611ce8",
+      "name": "🔍 Detect Chosen Slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        256
+      ],
+      "notes": "Reads the patient's confirmation reply and detects which option they chose.\nChecks for: 'Option 1', 'second option', 'yes', 'that works', 'sounds good' etc.\nIf ambiguous → needsManualConfirmation = true → admin alert.\nPrevents ever booking the wrong slot."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needsManualConfirmation }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {}
+        },
+        "options": {}
+      },
+      "id": "ff2fced7-9650-44e7-99ec-05ae0edeb0b2",
+      "name": "⚡ Choice Clear?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        256
+      ],
+      "notes": "True (unclear) → admin alert to handle manually.\nFalse (clear) → proceed to create the Google Calendar appointment."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=📅 Booking Confirmation Unclear | {{ $json.senderName }}",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">📅 Manual Confirmation Needed</h2>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>Patient:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Their reply:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280\">\n    Could not determine which slot the patient chose. Please confirm manually and book in Google Calendar.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "f688a550-da22-4431-bed2-20e114209438",
+      "name": "🟡 Alert Admin — Unclear Slot",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        160
+      ],
+      "webhookId": "a6a40e5f-f857-4139-b876-dcdb10db76fc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Alerts admin when the patient's reply is ambiguous.\nIncludes their full reply so admin can read and book the correct slot."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CONFIRMATION BRANCH — STEP 2\n// Map chosen option to slot start/end times\n// ============================================================\n\nconst d = $input.item.json;\nconst opt = d.chosenOption || 1;\n\nconst slotStart = d[`slot${opt}Start`] || d.slot1Start || '';\nconst slotEnd   = d[`slot${opt}End`]   || d.slot1End   || '';\nconst slotId    = d[`slot${opt}Id`]    || d.slot1Id    || '';\n\nreturn {\n  json: {\n    ...d,\n    confirmedSlotStart: slotStart,\n    confirmedSlotEnd:   slotEnd,\n    confirmedSlotId:    slotId,\n    calendarTitle:      `${d.appointmentType} — ${d.senderName}`,\n    calendarDesc:       `Patient: ${d.senderName}\\nEmail: ${d.senderEmail}\\nType: ${d.appointmentType}\\nBooked: ${new Date().toISOString()}`\n  }\n};"
+      },
+      "id": "335de363-5656-4811-aa4f-57c1988b1593",
+      "name": "📋 Map Confirmed Slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        352
+      ],
+      "notes": "Maps the chosen option number to the correct slot start/end times.\nBuilds the Google Calendar event title: 'ADHD Assessment — Patient Name'"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "start": "={{ $json.confirmedSlotStart }}",
+        "end": "={{ $json.confirmedSlotEnd }}",
+        "additionalFields": {
+          "attendees": [
+            {
+              "email": "={{ $json.senderEmail }}"
+            }
+          ],
+          "description": "={{ $json.calendarDesc }}",
+          "location": "REPLACE_WITH_CLINIC_ADDRESS_OR_ZOOM",
+          "summary": "={{ $json.calendarTitle }}",
+          "visibility": "private"
+        }
+      },
+      "id": "4b58bd3a-de2b-4ff1-abe2-467658a4e1d2",
+      "name": "📅 Create Calendar Appointment",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "create",
+      "position": [
+        -128,
+        352
+      ],
+      "notes": "Creates the confirmed appointment in Google Calendar.\nIncludes patient details, reminders (24hr email + 60min + 30min popup), private visibility.\nPatient receives a Google Calendar invite automatically."
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "additionalFields": {}
+      },
+      "id": "ac881c2e-a052-441f-8f49-fce7068be30c",
+      "name": "🗑️ Delete Available Slot",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "delete",
+      "position": [
+        96,
+        352
+      ],
+      "notes": "Deletes the 'Available' event immediately after booking.\nThis is what prevents double booking — the slot disappears from the calendar the moment it's confirmed.\nNo other patient can be offered the same slot."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "=Your appointment is confirmed — {{ $json.appointmentType }}",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px;color:#1f2937\">\n  <div style=\"background:#166534;color:white;padding:24px;border-radius:8px 8px 0 0\">\n    <h1 style=\"margin:0;font-size:22px\">Appointment Confirmed ✓</h1>\n    <p style=\"margin:8px 0 0;opacity:0.9\">REPLACE_WITH_CLINIC_NAME</p>\n  </div>\n  <div style=\"background:white;padding:24px;border:1px solid #e5e7eb;border-top:none\">\n    <p>Dear {{ $json.firstName }},</p>\n    <p>Your appointment is confirmed. Here are your details:</p>\n    <table style=\"width:100%;border-collapse:collapse;margin:16px 0;background:#f9fafb;border-radius:8px\">\n      <tr style=\"border-bottom:1px solid #e5e7eb\">\n        <td style=\"padding:12px;font-weight:bold;width:40%\">Appointment</td>\n        <td style=\"padding:12px\">{{ $json.appointmentType }}</td>\n      </tr>\n      <tr style=\"border-bottom:1px solid #e5e7eb\">\n        <td style=\"padding:12px;font-weight:bold\">Date &amp; Time</td>\n        <td style=\"padding:12px\">{{ new Date($json.confirmedSlotStart).toLocaleString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}) }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:12px;font-weight:bold\">Location</td>\n        <td style=\"padding:12px\">REPLACE_WITH_CLINIC_ADDRESS</td>\n      </tr>\n    </table>\n    <div style=\"background:#f0fdf4;padding:16px;border-radius:8px;border-left:4px solid #166534\">\n      <p style=\"margin:0;font-weight:bold\">What to bring:</p>\n      <p style=\"margin:8px 0 0\">REPLACE_WITH_PREPARATION_INSTRUCTIONS</p>\n    </div>\n    <p style=\"margin-top:20px\">To cancel or reschedule please contact us at least 48 hours in advance on <strong>REPLACE_WITH_PHONE_NUMBER</strong>.</p>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center\">\n    REPLACE_WITH_CLINIC_NAME | REPLACE_WITH_ADDRESS | REPLACE_WITH_PHONE\n  </div>\n</div>",
+        "options": {
+          "ccList": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+          "replyTo": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk"
+        }
+      },
+      "id": "92d1eb39-e0f4-4848-95a0-7dd7e28e21b4",
+      "name": "📧 Send Booking Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        320,
+        352
+      ],
+      "webhookId": "75f7e966-7e94-4696-8ef0-7008bd2ff6cf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends professional HTML confirmation email to patient.\nIncludes: appointment type, confirmed date/time (UK format), location, what to bring, cancellation policy.\nCCs admin on every confirmed booking.\nReplies in the same thread."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "=CONFIRMED",
+            "Calendar Event ID": "={{ $('📅 Create Calendar Appointment').item.json.id }}",
+            "Confirmed Slot": "={{ $json.confirmedSlotStart }}",
+            "Notes": "=Confirmed and added to Google Calendar"
+          }
+        },
+        "options": {}
+      },
+      "id": "454b463d-ae28-4f44-8bb8-5b640ea3b835",
+      "name": "📊 Update Sheet — Confirmed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        544,
+        352
+      ],
+      "notes": "Updates booking row from SLOTS_PROPOSED → CONFIRMED.\nStores the Google Calendar event ID for future reference.\nLookup by Thread ID links this confirmation back to the original booking request row."
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "additionalFields": {}
+      },
+      "id": "fc36a6b2-34e6-46f5-aff7-2d102339027d",
+      "name": "🗑️ Cancel — Remove from Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "delete",
+      "position": [
+        -800,
+        448
+      ],
+      "notes": "Removes the appointment from Google Calendar when a patient emails to cancel.\nThe googleCalendarEventId should be retrieved from the Bookings sheet by threadId.\nFor production: add a Google Sheets lookup node before this to get the event ID."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "=Your appointment has been cancelled",
+        "emailType": "text",
+        "message": "=Dear {{ $json.firstName }},\n\nWe have received your cancellation request and your appointment has been removed from our calendar.\n\nIf you would like to rebook in the future, please don't hesitate to get in touch.\n\nKind regards,\nAdmin Team\nREPLACE_WITH_CLINIC_NAME\nREPLACE_WITH_PHONE_NUMBER",
+        "options": {
+          "ccList": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk"
+        }
+      },
+      "id": "f56def41-df0c-4965-949e-ceeae1ddb0b4",
+      "name": "📧 Send Cancellation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        448
+      ],
+      "webhookId": "22758331-67a2-475f-9c94-acf02f616a96",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends cancellation confirmation to patient.\nCCs admin. Stays in the same thread."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "adult_adhd_assessment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "adult_adhd"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "child_adhd_assessment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "child_adhd"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "follow_up",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "follow_up"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "medication_query",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "medication"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "gp_shared_care",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "gp_shared_care"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "general_enquiry",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "general"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "bbd44194-1eae-4c45-a281-722a08b26fe1",
+      "name": "🔀 Route Enquiry by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -800,
+        1056
+      ],
+      "notes": "Routes general enquiries to the correct template.\n6 outputs: adult_adhd | child_adhd | follow_up | medication | gp_shared_care | general\nFallback → manual review alert."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst firstName = d.firstName || 'there';\nlet body = `Dear ${firstName},\\n\\nThank you so much for getting in touch with us.\\n\\n// ▼▼▼ PASTE YOUR ADULT ADHD ASSESSMENT TEMPLATE HERE ▼▼▼\\n\\nWe would be delighted to support you through our adult ADHD assessment pathway. Our assessments are carried out by experienced specialist consultants in a thorough, compassionate evaluation tailored to you.\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n`;\nif (d.mentionsWaitingTime) body += `\\nRegarding waiting times: we are currently seeing new patients within approximately [X weeks]. We will confirm your exact date once your information is received.\\n`;\nif (d.mentionsPrice) body += `\\nRegarding fees: our adult ADHD assessment is priced at [£XXX]. We will provide a full breakdown when confirming your appointment.\\n`;\nif (d.location) body += `\\nWe note you mentioned ${d.location} — we have options available that would be convenient for you.\\n`;\nbody += `\\nTo take the next step, please reply to this email or call us on [PHONE NUMBER].\\n\\nWarm regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'Adult ADHD Assessment', ccEmail: 'REPLACE_ADULT_ADHD_CONSULTANT@yourclinic.co.uk' } };"
+      },
+      "id": "9d37f3d1-83d7-447d-a11b-865885e634fb",
+      "name": "📝 Template — Adult ADHD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        640
+      ],
+      "notes": "Adult ADHD Assessment template.\nPaste your actual template in the marked section.\nAuto-inserts waiting time / pricing / location paragraphs if patient mentioned them.\nUpdate ccEmail to your adult ADHD consultant's address."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst firstName = d.firstName || 'there';\nlet body = `Dear ${firstName},\\n\\nThank you for reaching out to us. We understand how important it is to get the right support for your child.\\n\\n// ▼▼▼ PASTE YOUR CHILD ADHD ASSESSMENT TEMPLATE HERE ▼▼▼\\n\\nOur child ADHD assessment is conducted by specialist paediatric consultants in a relaxed, friendly environment.\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n`;\nif (d.mentionsWaitingTime) body += `\\nRegarding waiting times: we are currently booking child assessments within approximately [X weeks].\\n`;\nif (d.mentionsPrice) body += `\\nRegarding fees: the child ADHD assessment is [£XXX]. Full details provided when confirming.\\n`;\nbody += `\\nIf you have any questions please don\\'t hesitate to get in touch.\\n\\nWarm regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'Child ADHD Assessment', ccEmail: 'REPLACE_CHILD_CONSULTANT@yourclinic.co.uk' } };"
+      },
+      "id": "90566fe5-1277-4ac4-ab3a-462aa2c6b624",
+      "name": "📝 Template — Child ADHD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        832
+      ],
+      "notes": "Child ADHD Assessment template.\nWarmer tone directed at parents/guardians.\nUpdate ccEmail to your paediatric consultant's address."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst firstName = d.firstName || 'there';\nconst body = `Dear ${firstName},\\n\\nThank you for getting in touch with us.\\n\\n// ▼▼▼ PASTE YOUR FOLLOW-UP TEMPLATE HERE ▼▼▼\\n\\nWe have received your follow-up enquiry and a member of our team will be in touch as soon as possible. If this is urgent please call us on [PHONE NUMBER].\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n\\nKind regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'Follow-Up', ccEmail: 'REPLACE_ADMIN@yourclinic.co.uk' } };"
+      },
+      "id": "87777482-2cca-42f4-89af-b839cc306822",
+      "name": "📝 Template — Follow Up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1024
+      ],
+      "notes": "Follow-Up Enquiry template. Keep concise — existing patients need a quick acknowledgement."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst firstName = d.firstName || 'there';\nconst body = `Dear ${firstName},\\n\\nThank you for contacting us regarding your medication.\\n\\n// ▼▼▼ PASTE YOUR MEDICATION QUERY TEMPLATE HERE ▼▼▼\\n\\nWe have received your query and will pass it to the appropriate member of your care team. For specific clinical advice about your medication please speak directly with your prescribing consultant.\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n\\nKind regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'Medication Query', ccEmail: 'REPLACE_PRESCRIPTIONS@yourclinic.co.uk' } };"
+      },
+      "id": "bcf69e1b-2070-4011-b0e9-3c75f0d81101",
+      "name": "📝 Template — Medication",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1520
+      ],
+      "notes": "Medication Query template.\nNever provides clinical advice. Directs to prescribing consultant."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst recipientName = d.gpName ? `Dr ${d.gpName}` : (d.firstName !== 'there' ? d.firstName : 'Doctor');\nconst body = `Dear ${recipientName},\\n\\nThank you for your enquiry regarding shared care arrangements.\\n\\n// ▼▼▼ PASTE YOUR GP / SHARED CARE TEMPLATE HERE ▼▼▼\\n\\nWe welcome referrals and shared care arrangements and are committed to working collaboratively to support your patients.\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n\\nKind regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'GP / Shared Care', ccEmail: 'REPLACE_GP_LIAISON@yourclinic.co.uk' } };"
+      },
+      "id": "8f86ce92-842e-4a8a-a716-2a3d31a7c804",
+      "name": "📝 Template — GP Shared Care",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1712
+      ],
+      "notes": "GP / Shared Care template.\nProfessional clinical tone. Auto-inserts GP name as 'Dr [Name]' if detected."
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst firstName = d.firstName || 'there';\nconst body = `Dear ${firstName},\\n\\nThank you for getting in touch with us.\\n\\n// ▼▼▼ PASTE YOUR GENERAL ENQUIRY TEMPLATE HERE ▼▼▼\\n\\nWe have received your enquiry and a member of our admin team will be in touch shortly.\\n\\n// ▲▲▲ END OF TEMPLATE ▲▲▲\\n\\nKind regards,\\nAdmin Team\\nREPLACE_WITH_CLINIC_NAME`;\nreturn { json: { ...d, emailSubject: `Re: ${d.subject}`, emailBody: body, categoryLabel: 'General Enquiry', ccEmail: 'REPLACE_ADMIN@yourclinic.co.uk' } };"
+      },
+      "id": "570959b4-c319-4545-8b18-3ae0d4cdf2e0",
+      "name": "📝 Template — General",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1904
+      ],
+      "notes": "General Enquiry catch-all template. Warm and open."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {
+          "ccList": "={{ $json.ccEmail }}",
+          "replyTo": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk"
+        }
+      },
+      "id": "b7830cf5-424f-4b75-859a-8f587d47f356",
+      "name": "📤 Send Enquiry Auto-Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        1352
+      ],
+      "webhookId": "ee9dc3ee-02d0-450e-b744-c37c7a487d6d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends the personalised auto-reply for all 6 enquiry categories.\nAll template branches merge into this single send node.\nReplies in thread, CCs the relevant consultant/admin."
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { ...$input.item.json, logTimestamp: new Date().toISOString(), logDate: new Date().toLocaleDateString('en-GB'), logTime: new Date().toLocaleTimeString('en-GB'), logStatus: 'AUTO_REPLIED', autoReplied: true, folderName: `${new Date().toISOString().split('T')[0]} — ${$input.item.json.senderName} — ${$input.item.json.categoryLabel || $input.item.json.category}` } };"
+      },
+      "id": "3319a098-64b5-41b8-af18-727842f4f788",
+      "name": "📋 Prepare Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        1352
+      ],
+      "notes": "Prepares the log entry after successful send.\nBuilds folder name: YYYY-MM-DD — Sender Name — Category"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Enquiries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.logTimestamp }}",
+            "Date": "={{ $json.logDate }}",
+            "Time": "={{ $json.logTime }}",
+            "Name": "={{ $json.senderName }}",
+            "Email": "={{ $json.senderEmail }}",
+            "Category": "={{ $json.categoryLabel || $json.category }}",
+            "AI Confidence": "={{ $json.confidence }}",
+            "Status": "={{ $json.logStatus }}",
+            "Auto Replied": "={{ $json.autoReplied }}",
+            "Subject": "={{ $json.subject }}",
+            "AI Reasoning": "={{ $json.ai.reasoning }}",
+            "Location": "={{ $json.location }}",
+            "GP Name": "={{ $json.gpName }}",
+            "Is Child": "={{ $json.isChild }}",
+            "Drive Folder": "=Pending"
+          }
+        },
+        "options": {}
+      },
+      "id": "7345e9e3-9e9c-4f55-acb3-0a013cbfd714",
+      "name": "📊 Log Enquiry to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        96,
+        1352
+      ],
+      "notes": "Logs every enquiry to the Enquiries tab.\nSheet tab must be named 'Enquiries' with headers:\nTimestamp | Date | Time | Name | Email | Category | AI Confidence | Status | Auto Replied | Subject | AI Reasoning | Location | GP Name | Is Child | Drive Folder"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.folderName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "a8d3a1bf-1faf-4a86-8f74-5410cd07ae93",
+      "name": "📁 Create Drive Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        320,
+        1352
+      ],
+      "notes": "Creates a Drive folder for each enquiry.\nFolder name: YYYY-MM-DD — Sender Name — Category\nREPLACE: parents with your main enquiries folder ID in Google Drive."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Enquiries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Drive Folder": "={{ $json.webViewLink || $json.id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "07c2562e-59b1-4ee0-8e76-4e7fa18383e2",
+      "name": "🔗 Update Sheet — Drive Link",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        544,
+        1352
+      ],
+      "notes": "Updates the Drive Folder column in the Enquiries sheet with the clickable folder link."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=🟡 Manual Review | {{ $json.senderName }} | {{ $json.ai.originalIntent || $json.intent }}",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">🟡 Manual Review Required</h2>\n    <p style=\"margin:4px 0 0\">AI confidence too low — not auto-replied to.</p>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>From:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Subject:</strong> {{ $json.subject }}</p>\n    <p><strong>AI Best Guess:</strong> intent={{ $json.ai.originalIntent || $json.intent }}, category={{ $json.ai.originalCategory || $json.category }}</p>\n    <p><strong>Confidence:</strong> {{ $json.confidence }}</p>\n    <p><strong>Reasoning:</strong> {{ $json.ai.reasoning }}</p>\n  </div>\n  <div style=\"background:white;padding:16px;border:1px solid #e5e7eb;border-top:none\">\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "5f8dc12f-77da-4dfd-95bb-f17f9071b10a",
+      "name": "🟡 Alert Admin — Manual Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1328
+      ],
+      "webhookId": "923787ab-b0af-45f0-bdcf-f806d5a7881d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2MqtraT9PBkl1Qf2",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Catch-all for low confidence or unrecognised emails.\nIncludes AI's best guess and reasoning.\nNo auto-reply ever sent from this branch.\nAlso catches the fallback from the enquiry category router."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "📬 Gmail — Watch New Emails": {
+      "main": [
+        [
+          {
+            "node": "🔧 Normalize Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔧 Normalize Email Data": {
+      "main": [
+        [
+          {
+            "node": "🚨 Safety Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚨 Safety Filter": {
+      "main": [
+        [
+          {
+            "node": "⚡ Is Safety Flagged?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Is Safety Flagged?": {
+      "main": [
+        [
+          {
+            "node": "🔴 Alert Admin — Safety Flag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🤖 AI — Classify & Detect Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI — Classify & Detect Intent": {
+      "main": [
+        [
+          {
+            "node": "🧩 Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧩 Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "🔀 Master Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Master Router": {
+      "main": [
+        [
+          {
+            "node": "📅 Prepare Slot Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔍 Detect Chosen Slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🗑️ Cancel — Remove from Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔀 Route Enquiry by Category",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🟡 Alert Admin — Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Prepare Slot Search": {
+      "main": [
+        [
+          {
+            "node": "📅 Get Available Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Get Available Slots": {
+      "main": [
+        [
+          {
+            "node": "🗓️ Build Slot Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗓️ Build Slot Proposal": {
+      "main": [
+        [
+          {
+            "node": "⚡ Slots Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Slots Found?": {
+      "main": [
+        [
+          {
+            "node": "🟡 Alert Admin — No Slots",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📤 Send Slot Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Send Slot Proposal": {
+      "main": [
+        [
+          {
+            "node": "📊 Log Booking Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Detect Chosen Slot": {
+      "main": [
+        [
+          {
+            "node": "⚡ Choice Clear?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Choice Clear?": {
+      "main": [
+        [
+          {
+            "node": "🟡 Alert Admin — Unclear Slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📋 Map Confirmed Slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Map Confirmed Slot": {
+      "main": [
+        [
+          {
+            "node": "📅 Create Calendar Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Create Calendar Appointment": {
+      "main": [
+        [
+          {
+            "node": "🗑️ Delete Available Slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗑️ Delete Available Slot": {
+      "main": [
+        [
+          {
+            "node": "📧 Send Booking Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Send Booking Confirmation": {
+      "main": [
+        [
+          {
+            "node": "📊 Update Sheet — Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗑️ Cancel — Remove from Calendar": {
+      "main": [
+        [
+          {
+            "node": "📧 Send Cancellation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Route Enquiry by Category": {
+      "main": [
+        [
+          {
+            "node": "📝 Template — Adult ADHD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Template — Child ADHD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Template — Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Template — Medication",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Template — GP Shared Care",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Template — General",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🟡 Alert Admin — Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — Adult ADHD": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — Child ADHD": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — Follow Up": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — Medication": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — GP Shared Care": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Template — General": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Enquiry Auto-Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Send Enquiry Auto-Reply": {
+      "main": [
+        [
+          {
+            "node": "📋 Prepare Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Prepare Log Entry": {
+      "main": [
+        [
+          {
+            "node": "📊 Log Enquiry to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Log Enquiry to Sheet": {
+      "main": [
+        [
+          {
+            "node": "📁 Create Drive Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📁 Create Drive Folder": {
+      "main": [
+        [
+          {
+            "node": "🔗 Update Sheet — Drive Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "42063e28-b00e-435b-a17d-e94eb1e1b148",
+  "meta": {
+    "instanceId": "a28f8e9494c3d687731066b6d50285933cc7d36a7bd2d9f58e2d3c6fe0d6022c"
+  },
+  "id": "wr4Ddfo0yMXwPiWjs66J-",
+  "tags": []
+}

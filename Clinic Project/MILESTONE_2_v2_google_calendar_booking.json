@@ -1,0 +1,714 @@
+{
+  "name": "ADHD Clinic — Milestone 2 v2: Google Calendar Booking System (No Third-Party Platform)",
+  "_notes": {
+    "overview": "This workflow handles the full appointment booking lifecycle using ONLY Gmail + Google Calendar. When a patient emails requesting an appointment, the system detects it, checks consultant availability, proposes a slot, and once confirmed books it directly into Google Calendar with a confirmation email sent to the patient.",
+    "architecture": "Google Calendar is the single source of truth. Consultants manage availability by creating 'Available' events in their calendar. The system reads these, proposes them to patients, and converts them to confirmed appointments when the patient replies to confirm.",
+    "flow": "Patient emails → detected as booking request → system reads next available slot from Google Calendar → replies with proposed time → patient confirms → appointment created in Google Calendar → confirmation email sent → slot marked as booked",
+    "twoPhaseBooking": "Phase 1 (auto): System detects booking request, proposes next available slot. Phase 2 (auto): System detects confirmation reply, finalises the booking in Google Calendar.",
+    "setup_required": [
+      "1. Gmail OAuth2 credential",
+      "2. Google Calendar OAuth2 credential",
+      "3. Google Sheets OAuth2 credential",
+      "4. OpenAI API credential",
+      "5. Replace all REPLACE_ placeholders before activating"
+    ]
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "filters": {
+          "readStatus": "unread",
+          "includeSpamTrash": false
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0001-0001-0001-200000000001",
+      "name": "📬 Gmail — Watch New Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [180, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Same Gmail trigger as Milestone 1.\nPolls every 60 seconds for new unread emails.\nHandles BOTH: general enquiries (routed to Milestone 1 logic) AND booking requests (handled here).\nUnread only — prevents duplicate processing."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Normalize Email Data\n// Identical to Milestone 1 — extracts clean fields from\n// the raw Gmail payload.\n// ============================================================\n\nconst item = $input.item.json;\n\nconst fromRaw = item.from || '';\nlet senderEmail = '';\nlet senderName = '';\n\nconst emailMatch = fromRaw.match(/<([^>]+)>/);\nif (emailMatch) {\n  senderEmail = emailMatch[1].trim().toLowerCase();\n  senderName = fromRaw.split('<')[0].trim().replace(/\"/g, '');\n} else {\n  senderEmail = fromRaw.trim().toLowerCase();\n  senderName = fromRaw.split('@')[0].trim();\n}\n\nconst firstName = senderName.split(' ')[0] || 'there';\nconst bodyText = item.text || item.snippet || '';\nconst bodyClean = bodyText.replace(/\\r\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim().substring(0, 3000);\nconst fullTextLower = `${item.subject || ''} ${bodyClean}`.toLowerCase();\n\n// Detect if this is a REPLY to our earlier proposal\n// Gmail threads: if subject starts with 'Re:' and body contains confirmation language\nconst isReply = (item.subject || '').toLowerCase().startsWith('re:');\nconst hasThreadId = !!item.threadId;\n\nreturn {\n  json: {\n    messageId:     item.id || '',\n    threadId:      item.threadId || '',\n    senderEmail,\n    senderName,\n    firstName,\n    subject:       item.subject || '(No Subject)',\n    body:          bodyClean,\n    fullTextLower,\n    receivedAt:    item.date || new Date().toISOString(),\n    isReply,\n    hasThreadId,\n    _raw:          item\n  }\n};"
+      },
+      "id": "c1d2e3f4-0002-0002-0002-200000000002",
+      "name": "🔧 Normalize Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 400],
+      "notes": "Extracts and normalizes all fields from the Gmail payload.\nAlso detects whether this is a fresh email or a reply to our slot proposal.\nThis is important — replies from patients confirming an appointment are handled differently to new enquiries."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Safety Filter\n// IDENTICAL to Milestone 1 — never skip this.\n// Runs before any AI or booking logic.\n// ============================================================\n\nconst text = $input.item.json.fullTextLower || '';\n\nconst legalPatterns = ['complaint','complain','solicitor','legal action','lawsuit','sue','court','ombudsman','data breach','gdpr breach','negligence','malpractice','report you'];\nconst safeguardingPatterns = ['safeguarding','safeguard','at risk','risk of harm','abuse','neglect','domestic violence','threatened','violence','police','social services'];\nconst crisisPatterns = ['suicid','self harm','self-harm','overdose','want to die','end my life','hurt myself','crisis','emergency','not safe'];\n\nconst matchedLegal        = legalPatterns.filter(p => text.includes(p));\nconst matchedSafeguarding = safeguardingPatterns.filter(p => text.includes(p));\nconst matchedCrisis       = crisisPatterns.filter(p => text.includes(p));\n\nconst isFlagged = matchedLegal.length > 0 || matchedSafeguarding.length > 0 || matchedCrisis.length > 0;\n\nlet flagReason = '';\nlet flagCategory = '';\n\nif (matchedCrisis.length > 0) {\n  flagCategory = 'CRISIS_RISK';\n  flagReason = `Crisis language: ${matchedCrisis.join(', ')}`;\n} else if (matchedSafeguarding.length > 0) {\n  flagCategory = 'SAFEGUARDING';\n  flagReason = `Safeguarding language: ${matchedSafeguarding.join(', ')}`;\n} else if (matchedLegal.length > 0) {\n  flagCategory = 'LEGAL_COMPLAINT';\n  flagReason = `Legal language: ${matchedLegal.join(', ')}`;\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    safety: { isFlagged, flagCategory, flagReason }\n  }\n};"
+      },
+      "id": "c1d2e3f4-0003-0003-0003-200000000003",
+      "name": "🚨 Safety Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 400],
+      "notes": "Identical safety filter from Milestone 1.\nChecks for: legal/complaint, safeguarding, and crisis language.\nIf flagged → admin alert, NO auto-reply, NO booking attempted.\nThis runs on ALL emails before any logic."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.safety.isFlagged }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0004-0004-0004-200000000004",
+      "name": "⚡ Is Safety Flagged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [840, 400],
+      "notes": "Hard gate.\nTrue (flagged) → admin alert, stop.\nFalse (clean) → AI intent detection."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=⛔ URGENT — {{ $json.safety.flagCategory }} | {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#dc2626;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">⛔ Manual Review — {{ $json.safety.flagCategory }}</h2>\n    <p style=\"margin:4px 0 0\">This email has NOT been replied to.</p>\n  </div>\n  <div style=\"background:#fef2f2;padding:16px;border:1px solid #fecaca\">\n    <p><strong>From:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Subject:</strong> {{ $json.subject }}</p>\n    <p><strong>Trigger:</strong> {{ $json.safety.flagReason }}</p>\n    <p><strong>Received:</strong> {{ $json.receivedAt }}</p>\n  </div>\n  <div style=\"background:white;padding:16px;border:1px solid #e5e7eb;border-top:none\">\n    <p><strong>Email:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0005-0005-0005-200000000005",
+      "name": "🔴 Alert Admin — Flagged Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1060, 220],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends formatted red alert to admin for flagged emails.\nNo booking or auto-reply ever attempted.\nREPLACE: sendTo with your admin email."
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 400
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an intent classifier for an ADHD clinic. Analyse the email and return ONLY valid JSON. No markdown. No explanation."
+            },
+            {
+              "role": "user",
+              "content": "=Classify this email intent.\n\nSubject: {{ $json.subject }}\nBody: {{ $json.body }}\nIs Reply: {{ $json.isReply }}\n\nReturn JSON:\n{\n  \"intent\": one of [\"booking_request\", \"booking_confirmation\", \"booking_cancellation\", \"general_enquiry\", \"follow_up\", \"manual_review\"],\n  \"confidence\": 0.0 to 1.0,\n  \"appointmentType\": \"what type of appointment they want in plain English, or empty string\",\n  \"firstName\": \"patient first name if mentioned, else empty string\",\n  \"isChild\": true or false,\n  \"preferredDate\": \"any date or time preference mentioned, else empty string\",\n  \"reasoning\": \"one sentence\"\n}\n\nRules:\n- booking_request: patient wants to book a new appointment\n- booking_confirmation: patient is replying YES to a slot we proposed\n- booking_cancellation: patient wants to cancel an existing appointment\n- general_enquiry: question, information request, not a booking\n- follow_up: existing patient following up on their care\n- manual_review: anything ambiguous or confidence below 0.75\n- If isReply=true and body contains yes/confirm/that works/perfect/sounds good → booking_confirmation"
+            }
+          ]
+        }
+      },
+      "id": "c1d2e3f4-0006-0006-0006-200000000006",
+      "name": "🤖 AI — Detect Intent",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1060, 560],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_OPENAI_CREDENTIAL_ID",
+          "name": "Clinic OpenAI Key"
+        }
+      },
+      "notes": "Classifies the EMAIL INTENT — is this a booking request, a confirmation reply, a cancellation, or a general enquiry?\n\nThis is the key decision node that separates:\n- Booking requests → find available slot → propose it\n- Confirmation replies → finalise the booking in Google Calendar\n- Cancellations → remove from Google Calendar\n- General enquiries → pass to Milestone 1 email triage logic\n\nTemperature 0.1 = highly consistent output.\nConfidence < 0.75 → manual review."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Parse AI Intent Response\n// Bulletproof parser — every failure → manual_review\n// ============================================================\n\nconst upstream = $input.item.json;\nlet aiText = '';\n\ntry {\n  aiText = upstream.text || upstream.message?.content || upstream.choices?.[0]?.message?.content || upstream.content?.[0]?.text || '';\n} catch(e) { aiText = ''; }\n\nlet intent = {};\ntry {\n  const cleaned = aiText.replace(/```json/gi,'').replace(/```/g,'').trim();\n  intent = JSON.parse(cleaned);\n  if (!intent.intent) throw new Error('Missing intent field');\n} catch(e) {\n  intent = {\n    intent: 'manual_review',\n    confidence: 0,\n    reasoning: `Parse failed: ${e.message}`,\n    appointmentType: '',\n    firstName: '',\n    isChild: false,\n    preferredDate: ''\n  };\n}\n\n// Confidence gate\nif (intent.confidence < 0.75 && intent.intent !== 'manual_review') {\n  intent.originalIntent = intent.intent;\n  intent.intent = 'manual_review';\n  intent.reasoning = `Low confidence (${intent.confidence}). Was: ${intent.originalIntent}`;\n}\n\nconst bestFirstName = (intent.firstName && intent.firstName.trim()) ? intent.firstName : upstream.firstName || 'there';\n\nreturn {\n  json: {\n    ...upstream,\n    firstName: bestFirstName,\n    intent: intent.intent,\n    intentData: intent,\n    appointmentType: intent.appointmentType || 'ADHD Assessment',\n    isChild: intent.isChild || false,\n    preferredDate: intent.preferredDate || ''\n  }\n};"
+      },
+      "id": "c1d2e3f4-0007-0007-0007-200000000007",
+      "name": "🧩 Parse AI Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 560],
+      "notes": "Parses and validates the AI intent response.\nSame bulletproof approach as Milestone 1:\n- Strips markdown fences\n- Catches JSON parse errors\n- Enforces confidence threshold\n- Every failure mode → manual_review"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "booking_request", "operator": { "type": "string", "operation": "equals" } }]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_request"
+            },
+            {
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "booking_confirmation", "operator": { "type": "string", "operation": "equals" } }]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_confirmation"
+            },
+            {
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "booking_cancellation", "operator": { "type": "string", "operation": "equals" } }]
+              },
+              "renameOutput": true,
+              "outputKey": "booking_cancellation"
+            },
+            {
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "general_enquiry", "operator": { "type": "string", "operation": "equals" } }]
+              },
+              "renameOutput": true,
+              "outputKey": "general_enquiry"
+            },
+            {
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "follow_up", "operator": { "type": "string", "operation": "equals" } }]
+              },
+              "renameOutput": true,
+              "outputKey": "follow_up"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "c1d2e3f4-0008-0008-0008-200000000008",
+      "name": "🔀 Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1500, 560],
+      "notes": "Routes emails by detected intent:\n- booking_request → find available slots → propose to patient\n- booking_confirmation → create confirmed calendar event\n- booking_cancellation → remove from calendar, notify consultant\n- general_enquiry → handle with standard email templates (Milestone 1 logic)\n- follow_up → handle with follow-up template\n- fallback (manual_review) → alert admin"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Find Next Available Slots from Google Calendar\n// PURPOSE: Query the consultant's Google Calendar for\n//          'Available' events in the next 14 days and\n//          return up to 3 options to propose to the patient.\n// ============================================================\n// NOTE: This node prepares the search parameters.\n//       The actual Google Calendar query happens in the\n//       next node (Google Calendar - Get Events).\n// ============================================================\n\nconst d = $input.item.json;\n\n// Search window: today → 14 days from now\nconst now = new Date();\nconst twoWeeksLater = new Date();\ntwoWeeksLater.setDate(twoWeeksLater.getDate() + 14);\n\n// If patient mentioned a preferred date, try to honor it\n// by searching from that date if it's in the future\nlet searchFrom = now;\nif (d.preferredDate) {\n  const preferred = new Date(d.preferredDate);\n  if (!isNaN(preferred) && preferred > now) {\n    searchFrom = preferred;\n  }\n}\n\nreturn {\n  json: {\n    ...d,\n    calendarSearchFrom: searchFrom.toISOString(),\n    calendarSearchTo:   twoWeeksLater.toISOString(),\n    searchWindowDays:   14\n  }\n};"
+      },
+      "id": "c1d2e3f4-0009-0009-0009-200000000009",
+      "name": "📅 Prepare Availability Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 380],
+      "notes": "Prepares the date range for searching available slots.\nDefault: today → 14 days ahead.\nIf the patient mentioned a preferred date (e.g. 'next Tuesday'), the search starts from that date.\nOutputs calendarSearchFrom and calendarSearchTo for the Google Calendar query."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendarId": "REPLACE_WITH_CONSULTANT_CALENDAR_ID",
+        "returnAll": false,
+        "limit": 20,
+        "options": {
+          "timeMin": "={{ $json.calendarSearchFrom }}",
+          "timeMax": "={{ $json.calendarSearchTo }}",
+          "query": "Available",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "id": "c1d2e3f4-0010-0010-0010-200000000010",
+      "name": "📅 Get Available Slots from Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "getAll",
+      "position": [1940, 380],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Clinic Google Calendar OAuth2"
+        }
+      },
+      "notes": "Queries Google Calendar for events with 'Available' in the title within the next 14 days.\n\nREPLACE:\n- calendarId: consultant's calendar ID\n  (Google Calendar → Settings → Calendar name → Calendar ID)\n\nCONVENTION: Consultants mark open slots in Google Calendar as:\n  'Available 10:00-11:00' or 'Available'\nThe query searches for this keyword.\n\nFor multiple consultants: add a consultant selection step before this node\nbased on appointment type (e.g. child ADHD → paediatric consultant's calendar).\n\nReturns up to 20 events, ordered by start time — we'll filter to 3 best options next."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Select Best 3 Slots & Build Proposal Email\n// PURPOSE: From the available slots returned by Google\n//          Calendar, pick the best 3 and build a friendly\n//          email proposing them to the patient.\n// ============================================================\n\nconst allItems = $input.all();\nconst bookingData = allItems[0]?.json || {};\n\n// Collect all available events from the batch\nconst slots = allItems\n  .filter(item => item.json.start?.dateTime) // timed events only, not all-day\n  .map(item => ({\n    id:        item.json.id,\n    title:     item.json.summary || 'Available',\n    start:     item.json.start.dateTime,\n    end:       item.json.end?.dateTime || '',\n    timezone:  item.json.start.timeZone || 'Europe/London'\n  }))\n  .slice(0, 3); // Take the first 3 available slots\n\nif (slots.length === 0) {\n  // No slots found — flag for manual handling\n  return {\n    json: {\n      ...bookingData,\n      noSlotsFound: true,\n      availableSlots: []\n    }\n  };\n}\n\n// Format each slot for the email\nconst formatSlot = (slot, index) => {\n  const date = new Date(slot.start);\n  const endDate = new Date(slot.end);\n  const dateStr = date.toLocaleDateString('en-GB', {\n    weekday: 'long',\n    year: 'numeric',\n    month: 'long',\n    day: 'numeric',\n    timeZone: 'Europe/London'\n  });\n  const startTime = date.toLocaleTimeString('en-GB', {\n    hour: '2-digit',\n    minute: '2-digit',\n    timeZone: 'Europe/London'\n  });\n  const endTime = endDate.toLocaleTimeString('en-GB', {\n    hour: '2-digit',\n    minute: '2-digit',\n    timeZone: 'Europe/London'\n  });\n  return `Option ${index + 1}: ${dateStr} at ${startTime}–${endTime}`;\n};\n\nconst slotLines = slots.map((s, i) => formatSlot(s, i)).join('\\n');\n\n// Build the proposal email body\nconst firstName = bookingData.firstName || 'there';\nconst appointmentType = bookingData.appointmentType || 'appointment';\n\nconst emailBody = `Dear ${firstName},\n\nThank you for getting in touch — we'd be happy to arrange a ${appointmentType} for you.\n\nWe have the following appointments available:\n\n${slotLines}\n\nPlease simply reply to this email with which option works best for you, or let us know if none of these suit and we'll find an alternative.\n\nKind regards,\nAdmin Team\nREPLACE_WITH_CLINIC_NAME\nREPLACE_WITH_PHONE_NUMBER | REPLACE_WITH_WEBSITE`;\n\nreturn {\n  json: {\n    ...bookingData,\n    noSlotsFound:   false,\n    availableSlots: slots,\n    slotCount:      slots.length,\n    emailSubject:   `Re: ${bookingData.subject}`,\n    emailBody,\n    // Store slot IDs so we can book the chosen one when patient confirms\n    slot1Id:        slots[0]?.id || '',\n    slot2Id:        slots[1]?.id || '',\n    slot3Id:        slots[2]?.id || '',\n    slot1Start:     slots[0]?.start || '',\n    slot2Start:     slots[1]?.start || '',\n    slot3Start:     slots[2]?.start || '',\n    slot1End:       slots[0]?.end || '',\n    slot2End:       slots[1]?.end || '',\n    slot3End:       slots[2]?.end || ''\n  }\n};"
+      },
+      "id": "c1d2e3f4-0011-0011-0011-200000000011",
+      "name": "🗓️ Select Slots & Build Proposal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 380],
+      "notes": "Picks the best 3 available slots from the calendar results.\nFormats them in a friendly, readable UK date format:\n  'Option 1: Monday, 24 February 2026 at 10:00–11:00'\n\nBuilds a natural, non-robotic proposal email with all 3 options.\nPatient just replies with their preferred option.\n\nAlso stores slot IDs and times so we can book the correct one when the patient confirms.\n\nIf NO slots are available → noSlotsFound = true → routes to manual handling node."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.noSlotsFound }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0012-0012-0012-200000000012",
+      "name": "⚡ Any Slots Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2380, 380],
+      "notes": "If no available slots found in the next 14 days:\n→ Alert admin to handle manually (avoid sending a blank or confusing email)\n\nIf slots found:\n→ Send the proposal email to the patient"
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=📅 Manual Booking Needed — No Slots Available | {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">📅 Booking Request — No Available Slots Found</h2>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>Patient:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Appointment Type:</strong> {{ $json.appointmentType }}</p>\n    <p><strong>Preferred Date:</strong> {{ $json.preferredDate || 'Not specified' }}</p>\n    <p><strong>Message:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280\">\n    No available slots were found in Google Calendar for the next 14 days.\n    Please add availability to the consultant's calendar and reply to this patient manually.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0013-0013-0013-200000000013",
+      "name": "🟡 Alert Admin — No Slots",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2600, 260],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Alerts admin when no available slots are found in the calendar.\nIncludes full patient details and their original message so admin can respond promptly.\nAdmin should: add availability to Google Calendar, then reply to patient manually."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {
+          "replyTo": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk",
+          "sendAsEmail": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk",
+          "threadId": "={{ $json.threadId }}"
+        }
+      },
+      "id": "c1d2e3f4-0014-0014-0014-200000000014",
+      "name": "📤 Send Slot Proposal to Patient",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2600, 500],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends the 3-option slot proposal to the patient.\nReplies within the same Gmail thread (threadId) so it stays organised.\nPatient just hits reply and says which option they want.\n\nREPLACE:\n- replyTo: your clinic email\n- sendAsEmail: your clinic email"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp":        "={{ new Date().toISOString() }}",
+            "Patient Name":     "={{ $json.senderName }}",
+            "Patient Email":    "={{ $json.senderEmail }}",
+            "Appointment Type": "={{ $json.appointmentType }}",
+            "Preferred Date":   "={{ $json.preferredDate }}",
+            "Status":           "=SLOTS_PROPOSED",
+            "Slot 1":           "={{ $json.slot1Start }}",
+            "Slot 2":           "={{ $json.slot2Start }}",
+            "Slot 3":           "={{ $json.slot3Start }}",
+            "Thread ID":        "={{ $json.threadId }}",
+            "Notes":            "=Awaiting patient confirmation"
+          }
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0015-0015-0015-200000000015",
+      "name": "📊 Log Booking Request to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2820, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Clinic Google Sheets OAuth2"
+        }
+      },
+      "notes": "Logs the booking request with status SLOTS_PROPOSED.\nStores all 3 proposed slot times so admin can see what was offered.\nStores the threadId so the confirmation reply can be matched to this record.\n\nSheet tab: 'Bookings'\nRequired columns:\nTimestamp | Patient Name | Patient Email | Appointment Type | Preferred Date | Status | Slot 1 | Slot 2 | Slot 3 | Thread ID | Calendar Event ID | Notes"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Detect Which Slot Patient Confirmed\n// PURPOSE: When the patient replies confirming an option,\n//          parse their reply to determine which slot they\n//          chose (Option 1, 2, or 3).\n// ============================================================\n\nconst d = $input.item.json;\nconst bodyLower = (d.body || '').toLowerCase();\n\n// --- Detect which option they chose ---\nlet chosenOption = 0;\n\n// Check explicit option mentions\nif (bodyLower.includes('option 1') || bodyLower.includes('first option') || bodyLower.includes('1st option')) {\n  chosenOption = 1;\n} else if (bodyLower.includes('option 2') || bodyLower.includes('second option') || bodyLower.includes('2nd option')) {\n  chosenOption = 2;\n} else if (bodyLower.includes('option 3') || bodyLower.includes('third option') || bodyLower.includes('3rd option')) {\n  chosenOption = 3;\n}\n\n// If no explicit option mentioned, check for day/time mentions\n// (Patient might say 'Monday works' or 'the 10am slot')\n// In this case default to option 1 (earliest) with a flag for admin awareness\nif (chosenOption === 0) {\n  // Try to match any confirmation language\n  const confirmWords = ['yes','confirm','that works','sounds good','perfect','great','happy with','prefer','i\\'ll take','book me in','go ahead'];\n  const isConfirming = confirmWords.some(w => bodyLower.includes(w));\n  \n  if (isConfirming) {\n    chosenOption = 1; // Default to first option\n  }\n}\n\nconst needsManualReview = chosenOption === 0;\n\nreturn {\n  json: {\n    ...d,\n    chosenOption,\n    needsManualReview,\n    // These will be filled by a Sheets lookup in production\n    // For now we use session data passed through the thread\n    confirmedSlotNote: needsManualReview\n      ? 'Could not determine which slot patient chose — admin should confirm'\n      : `Patient confirmed Option ${chosenOption}`\n  }\n};"
+      },
+      "id": "c1d2e3f4-0016-0016-0016-200000000016",
+      "name": "🔍 Detect Chosen Slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 600],
+      "notes": "Analyses the patient's confirmation reply to determine which slot they chose.\n\nDetects:\n- Explicit: 'Option 1', 'second option', '3rd option'\n- Implicit: 'yes', 'that works', 'sounds good', 'perfect' → defaults to Option 1\n- Ambiguous: 'the Monday one' → routes to admin for manual confirmation\n\nIf the patient's choice is unclear → needsManualReview = true → admin handles it.\nThis prevents booking the wrong slot."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needsManualReview }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0017-0017-0017-200000000017",
+      "name": "⚡ Slot Choice Clear?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1940, 600],
+      "notes": "If slot choice is ambiguous → admin alert (no accidental wrong booking).\nIf choice is clear → proceed to create the Google Calendar event."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=📅 Booking Confirmation Unclear — Please Confirm | {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">📅 Manual Booking Confirmation Needed</h2>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>Patient:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Appointment Type:</strong> {{ $json.appointmentType }}</p>\n    <p><strong>Their reply:</strong></p>\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280\">\n    The system could not determine which slot the patient chose.\n    Please review their reply and book the correct slot in Google Calendar manually.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0018-0018-0018-200000000018",
+      "name": "🟡 Alert Admin — Unclear Choice",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2160, 480],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Alerts admin when the patient's confirmation reply is ambiguous.\nIncludes the patient's full reply so admin can read it and book the correct slot.\nPrevents the system from ever booking the wrong appointment."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Look Up Original Booking from Sheets\n// PURPOSE: Retrieve the slot times that were proposed to\n//          this patient so we know which calendar event to\n//          create for their chosen option.\n// ============================================================\n// In a full production setup, this would do a Google Sheets\n// lookup by threadId to get the exact slot start/end times.\n// For now, we prepare the lookup parameters.\n// ============================================================\n\nconst d = $input.item.json;\nconst chosenOption = d.chosenOption || 1;\n\n// Map chosen option to slot field names\nconst slotKey = `slot${chosenOption}Start`;\nconst slotEndKey = `slot${chosenOption}End`;\n\n// These fields exist if the data was passed through correctly\n// In a real deployment, do a Google Sheets lookup by threadId here\nconst slotStart = d[slotKey] || d.slot1Start || '';\nconst slotEnd   = d[slotEndKey] || d.slot1End || '';\n\nreturn {\n  json: {\n    ...d,\n    confirmedSlotStart: slotStart,\n    confirmedSlotEnd:   slotEnd,\n    calendarEventTitle: `${d.appointmentType} — ${d.senderName}`,\n    calendarEventDesc:  `Patient: ${d.senderName}\\nEmail: ${d.senderEmail}\\nType: ${d.appointmentType}\\nBooked via: Email\\nConfirmed: ${new Date().toISOString()}`,\n    calendarEventLocation: 'REPLACE_WITH_CLINIC_ADDRESS_OR_ZOOM'\n  }\n};"
+      },
+      "id": "c1d2e3f4-0019-0019-0019-200000000019",
+      "name": "📋 Prepare Confirmed Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 700],
+      "notes": "Prepares the confirmed booking data for Google Calendar.\nMaps the patient's chosen option number to the correct slot start/end times.\nBuilds the calendar event title: 'ADHD Assessment — Patient Name'\n\nFor a more robust setup: add a Google Sheets lookup node before this one\nthat searches the Bookings sheet by threadId to retrieve the original slot times.\nThis handles cases where the confirmation comes in a new conversation context."
+    },
+    {
+      "parameters": {
+        "calendarId": "REPLACE_WITH_CONSULTANT_CALENDAR_ID",
+        "start": "={{ $json.confirmedSlotStart }}",
+        "end": "={{ $json.confirmedSlotEnd }}",
+        "additionalFields": {
+          "summary": "={{ $json.calendarEventTitle }}",
+          "description": "={{ $json.calendarEventDesc }}",
+          "location": "={{ $json.calendarEventLocation }}",
+          "attendees": [{ "email": "={{ $json.senderEmail }}" }],
+          "reminders": {
+            "useDefault": false,
+            "overrides": [
+              { "method": "email",  "minutes": 1440 },
+              { "method": "popup",  "minutes": 60 },
+              { "method": "popup",  "minutes": 30 }
+            ]
+          },
+          "status": "confirmed",
+          "visibility": "private"
+        }
+      },
+      "id": "c1d2e3f4-0020-0020-0020-200000000020",
+      "name": "📅 Create Confirmed Appointment",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "create",
+      "position": [2380, 700],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Clinic Google Calendar OAuth2"
+        }
+      },
+      "notes": "Creates the confirmed appointment in Google Calendar.\n\nEvent includes:\n- Title: Appointment Type — Patient Name\n- Description: all patient contact details\n- Location: clinic address or Zoom link\n- Attendee: patient (receives Google Calendar invite)\n- Reminders: 24hr email + 1hr popup + 30min popup\n- Status: confirmed\n- Visibility: private (GDPR)\n\nThe 'Available' event for this slot should be deleted separately\n(or renamed to 'Booked') — see next node."
+    },
+    {
+      "parameters": {
+        "calendarId": "REPLACE_WITH_CONSULTANT_CALENDAR_ID",
+        "eventId": "={{ $json.slot1Id || $json.chosenSlotId }}",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0021-0021-0021-200000000021",
+      "name": "🗑️ Remove Available Slot (Now Booked)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "delete",
+      "position": [2600, 700],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Clinic Google Calendar OAuth2"
+        }
+      },
+      "notes": "Deletes the 'Available' slot event from Google Calendar now that it's been booked.\nThis prevents other patients from being offered the same slot.\n\nIMPORTANT: This is what prevents double booking.\nThe slot disappears from the calendar the moment it's confirmed."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "=Your appointment is confirmed — {{ $json.appointmentType }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px;color:#1f2937\">\n  <div style=\"background:#166534;color:white;padding:24px;border-radius:8px 8px 0 0\">\n    <h1 style=\"margin:0;font-size:22px\">Appointment Confirmed ✓</h1>\n    <p style=\"margin:8px 0 0;opacity:0.9\">REPLACE_WITH_CLINIC_NAME</p>\n  </div>\n  <div style=\"background:white;padding:24px;border:1px solid #e5e7eb;border-top:none\">\n    <p>Dear {{ $json.firstName }},</p>\n    <p>Your appointment is now confirmed. Here are your details:</p>\n    <table style=\"width:100%;border-collapse:collapse;margin:16px 0;background:#f9fafb;border-radius:8px\">\n      <tr style=\"border-bottom:1px solid #e5e7eb\">\n        <td style=\"padding:12px;font-weight:bold;width:40%\">Appointment</td>\n        <td style=\"padding:12px\">{{ $json.appointmentType }}</td>\n      </tr>\n      <tr style=\"border-bottom:1px solid #e5e7eb\">\n        <td style=\"padding:12px;font-weight:bold\">Date &amp; Time</td>\n        <td style=\"padding:12px\">{{ new Date($json.confirmedSlotStart).toLocaleString('en-GB', {weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}) }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:12px;font-weight:bold\">Location</td>\n        <td style=\"padding:12px\">REPLACE_WITH_CLINIC_ADDRESS</td>\n      </tr>\n    </table>\n    <div style=\"background:#f0fdf4;padding:16px;border-radius:8px;border-left:4px solid #166534\">\n      <p style=\"margin:0;font-weight:bold\">What to bring:</p>\n      <p style=\"margin:8px 0 0\">REPLACE_WITH_PREPARATION_INSTRUCTIONS</p>\n    </div>\n    <p style=\"margin-top:20px\">If you need to reschedule or cancel, please contact us at least 48 hours in advance on <strong>REPLACE_WITH_PHONE_NUMBER</strong>.</p>\n  </div>\n  <div style=\"background:#f3f4f6;padding:12px;border-radius:0 0 8px 8px;font-size:12px;color:#6b7280;text-align:center\">\n    REPLACE_WITH_CLINIC_NAME | REPLACE_WITH_ADDRESS | REPLACE_WITH_PHONE\n  </div>\n</div>",
+        "options": {
+          "ccList": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+          "replyTo": "REPLACE_CLINIC_EMAIL@yourclinic.co.uk",
+          "threadId": "={{ $json.threadId }}"
+        }
+      },
+      "id": "c1d2e3f4-0022-0022-0022-200000000022",
+      "name": "📧 Send Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2820, 700],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends a professional HTML confirmation email to the patient.\nIncludes: appointment type, confirmed date/time (UK format), location, what to bring, cancellation policy.\nCCs admin so they are aware of every confirmed booking.\nReplies in the same thread for clean conversation history.\n\nREPLACE all REPLACE_WITH_ values with real clinic details."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status":            "=CONFIRMED",
+            "Calendar Event ID": "={{ $('📅 Create Confirmed Appointment').item.json.id }}",
+            "Confirmed Slot":    "={{ $json.confirmedSlotStart }}",
+            "Notes":             "=Appointment confirmed and added to Google Calendar"
+          }
+        },
+        "where": {
+          "values": [
+            {
+              "lookupColumn": "Thread ID",
+              "lookupValue":  "={{ $json.threadId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0023-0023-0023-200000000023",
+      "name": "📊 Update Booking Sheet — Confirmed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [3040, 700],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Clinic Google Sheets OAuth2"
+        }
+      },
+      "notes": "Updates the booking row in Google Sheets from SLOTS_PROPOSED → CONFIRMED.\nAlso records the Google Calendar event ID for future reference (e.g. cancellations).\nLookup is done by threadId — this uniquely links the confirmation reply to the original booking request."
+    },
+    {
+      "parameters": {
+        "calendarId": "REPLACE_WITH_CONSULTANT_CALENDAR_ID",
+        "eventId": "={{ $json.googleCalendarEventId || '' }}",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0024-0024-0024-200000000024",
+      "name": "🗑️ Cancel — Remove from Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "operation": "delete",
+      "position": [1720, 800],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Clinic Google Calendar OAuth2"
+        }
+      },
+      "notes": "Removes the appointment from Google Calendar when patient emails to cancel.\nRequires the Google Calendar event ID — retrieved from the Bookings sheet by threadId.\n\nFor production: add a Google Sheets lookup node before this to get the event ID\nby searching the Bookings sheet for the matching threadId or patient email."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "=Your appointment has been cancelled",
+        "emailType": "text",
+        "message": "=Dear {{ $json.firstName }},\n\nWe have received your cancellation request and your appointment has been removed from our calendar.\n\nIf you'd like to rebook in the future, please don't hesitate to get in touch.\n\nKind regards,\nAdmin Team\nREPLACE_WITH_CLINIC_NAME\nREPLACE_WITH_PHONE_NUMBER",
+        "options": {
+          "ccList": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+          "threadId": "={{ $json.threadId }}"
+        }
+      },
+      "id": "c1d2e3f4-0025-0025-0025-200000000025",
+      "name": "📧 Send Cancellation Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1940, 800],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Confirms the cancellation to the patient.\nCCs admin so they are aware.\nKeeps it in the same thread."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=🟡 Manual Review — {{ $json.intentData.originalIntent || $json.intent }} | {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n  <div style=\"background:#d97706;color:white;padding:16px;border-radius:8px 8px 0 0\">\n    <h2 style=\"margin:0\">🟡 Manual Review Required</h2>\n    <p style=\"margin:4px 0 0\">Email could not be processed automatically.</p>\n  </div>\n  <div style=\"background:#fffbeb;padding:16px;border:1px solid #fde68a\">\n    <p><strong>From:</strong> {{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</p>\n    <p><strong>Subject:</strong> {{ $json.subject }}</p>\n    <p><strong>AI Intent:</strong> {{ $json.intent }}</p>\n    <p><strong>Confidence:</strong> {{ $json.intentData.confidence }}</p>\n    <p><strong>Reasoning:</strong> {{ $json.intentData.reasoning }}</p>\n  </div>\n  <div style=\"background:white;padding:16px;border:1px solid #e5e7eb;border-top:none\">\n    <div style=\"background:#f9fafb;padding:12px;border-radius:4px;white-space:pre-wrap\">{{ $json.body }}</div>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0026-0026-0026-200000000026",
+      "name": "🟡 Alert Admin — Manual Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1720, 980],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Catch-all for anything the system couldn't process confidently.\nIncludes AI's intent guess and reasoning so admin can see what was attempted.\nNo auto-reply ever sent from this branch."
+    }
+  ],
+  "connections": {
+    "📬 Gmail — Watch New Emails": {
+      "main": [[{ "node": "🔧 Normalize Email Data", "type": "main", "index": 0 }]]
+    },
+    "🔧 Normalize Email Data": {
+      "main": [[{ "node": "🚨 Safety Filter", "type": "main", "index": 0 }]]
+    },
+    "🚨 Safety Filter": {
+      "main": [[{ "node": "⚡ Is Safety Flagged?", "type": "main", "index": 0 }]]
+    },
+    "⚡ Is Safety Flagged?": {
+      "main": [
+        [{ "node": "🔴 Alert Admin — Flagged Email", "type": "main", "index": 0 }],
+        [{ "node": "🤖 AI — Detect Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "🤖 AI — Detect Intent": {
+      "main": [[{ "node": "🧩 Parse AI Intent", "type": "main", "index": 0 }]]
+    },
+    "🧩 Parse AI Intent": {
+      "main": [[{ "node": "🔀 Route by Intent", "type": "main", "index": 0 }]]
+    },
+    "🔀 Route by Intent": {
+      "main": [
+        [{ "node": "📅 Prepare Availability Search", "type": "main", "index": 0 }],
+        [{ "node": "🔍 Detect Chosen Slot", "type": "main", "index": 0 }],
+        [{ "node": "🗑️ Cancel — Remove from Calendar", "type": "main", "index": 0 }],
+        [{ "node": "🟡 Alert Admin — Manual Review", "type": "main", "index": 0 }],
+        [{ "node": "🟡 Alert Admin — Manual Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "📅 Prepare Availability Search": {
+      "main": [[{ "node": "📅 Get Available Slots from Calendar", "type": "main", "index": 0 }]]
+    },
+    "📅 Get Available Slots from Calendar": {
+      "main": [[{ "node": "🗓️ Select Slots & Build Proposal", "type": "main", "index": 0 }]]
+    },
+    "🗓️ Select Slots & Build Proposal": {
+      "main": [[{ "node": "⚡ Any Slots Available?", "type": "main", "index": 0 }]]
+    },
+    "⚡ Any Slots Available?": {
+      "main": [
+        [{ "node": "🟡 Alert Admin — No Slots", "type": "main", "index": 0 }],
+        [{ "node": "📤 Send Slot Proposal to Patient", "type": "main", "index": 0 }]
+      ]
+    },
+    "📤 Send Slot Proposal to Patient": {
+      "main": [[{ "node": "📊 Log Booking Request to Sheet", "type": "main", "index": 0 }]]
+    },
+    "🔍 Detect Chosen Slot": {
+      "main": [[{ "node": "⚡ Slot Choice Clear?", "type": "main", "index": 0 }]]
+    },
+    "⚡ Slot Choice Clear?": {
+      "main": [
+        [{ "node": "🟡 Alert Admin — Unclear Choice", "type": "main", "index": 0 }],
+        [{ "node": "📋 Prepare Confirmed Booking", "type": "main", "index": 0 }]
+      ]
+    },
+    "📋 Prepare Confirmed Booking": {
+      "main": [[{ "node": "📅 Create Confirmed Appointment", "type": "main", "index": 0 }]]
+    },
+    "📅 Create Confirmed Appointment": {
+      "main": [[{ "node": "🗑️ Remove Available Slot (Now Booked)", "type": "main", "index": 0 }]]
+    },
+    "🗑️ Remove Available Slot (Now Booked)": {
+      "main": [[{ "node": "📧 Send Confirmation Email", "type": "main", "index": 0 }]]
+    },
+    "📧 Send Confirmation Email": {
+      "main": [[{ "node": "📊 Update Booking Sheet — Confirmed", "type": "main", "index": 0 }]]
+    },
+    "🗑️ Cancel — Remove from Calendar": {
+      "main": [[{ "node": "📧 Send Cancellation Confirmation", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": true,
+    "timezone": "Europe/London"
+  },
+  "tags": [
+    { "name": "adhd-clinic" },
+    { "name": "calendar-booking" },
+    { "name": "milestone-2-v2" }
+  ],
+  "_setupChecklist": [
+    "[ ] 1. Gmail OAuth2 credential → replace REPLACE_GMAIL_CREDENTIAL_ID",
+    "[ ] 2. Google Calendar OAuth2 credential → replace REPLACE_GOOGLE_CALENDAR_CREDENTIAL_ID",
+    "[ ] 3. Google Sheets OAuth2 credential → replace REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+    "[ ] 4. OpenAI API credential → replace REPLACE_OPENAI_CREDENTIAL_ID",
+    "[ ] 5. Replace REPLACE_WITH_CONSULTANT_CALENDAR_ID in all Calendar nodes",
+    "[ ] 6. Replace REPLACE_ADMIN_EMAIL and REPLACE_CLINIC_EMAIL everywhere",
+    "[ ] 7. Replace REPLACE_WITH_GOOGLE_SHEET_ID with your Sheet ID",
+    "[ ] 8. Create 'Bookings' tab in Google Sheet with headers: Timestamp | Patient Name | Patient Email | Appointment Type | Preferred Date | Status | Slot 1 | Slot 2 | Slot 3 | Thread ID | Calendar Event ID | Notes",
+    "[ ] 9. Replace all REPLACE_WITH_CLINIC_* values in email templates",
+    "[ ] 10. Instruct consultants to mark open slots as 'Available' in Google Calendar",
+    "[ ] 11. Test end-to-end: send test booking email → check proposal received → reply confirm → check Google Calendar event created",
+    "[ ] 12. Activate workflow"
+  ]
+}

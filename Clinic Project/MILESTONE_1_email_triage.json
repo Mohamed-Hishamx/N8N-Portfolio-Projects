@@ -1,0 +1,600 @@
+{
+  "name": "ADHD Clinic — Milestone 1: Smart Email Triage & Auto-Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "readStatus": "unread",
+          "includeSpamTrash": false
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "📬 Gmail — Watch New Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [180, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "SETUP: Connect your clinic's Google Workspace Gmail account via OAuth2.\nGo to Credentials → New → Gmail OAuth2 → follow the Google auth flow.\nThis polls every 60 seconds for new unread emails.\nOnly unread emails are processed — already-read emails are skipped to prevent duplicates.\nSpam and trash are excluded automatically."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Normalize & Extract Email Fields\n// PURPOSE: Pull clean fields from the raw Gmail payload so\n//          every downstream node works with consistent data.\n// ============================================================\n\nconst item = $input.item.json;\n\n// --- Extract sender name and email separately ---\nconst fromRaw = item.from || '';\nlet senderEmail = '';\nlet senderName = '';\n\nconst emailMatch = fromRaw.match(/<([^>]+)>/);\nif (emailMatch) {\n  senderEmail = emailMatch[1].trim().toLowerCase();\n  senderName = fromRaw.split('<')[0].trim().replace(/\"/g, '');\n} else {\n  // Plain email with no display name\n  senderEmail = fromRaw.trim().toLowerCase();\n  senderName = fromRaw.split('@')[0].trim();\n}\n\n// --- Extract first name from sender name ---\nconst firstName = senderName.split(' ')[0] || 'there';\n\n// --- Get the best body text available ---\n// Gmail returns both plain text and HTML — prefer plain text\nconst bodyText = item.text || item.snippet || '';\nconst bodyClean = bodyText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim()\n  .substring(0, 3000); // Cap at 3000 chars for AI token efficiency\n\n// --- Build full text for safety/classification analysis ---\nconst fullText = `${item.subject || ''} ${bodyClean}`.toLowerCase();\n\nreturn {\n  json: {\n    // Core identifiers\n    messageId:    item.id || '',\n    threadId:     item.threadId || '',\n    // Sender info\n    senderEmail,\n    senderName,\n    firstName,\n    // Email content\n    subject:      item.subject || '(No Subject)',\n    body:         bodyClean,\n    fullTextLower: fullText,\n    // Metadata\n    receivedAt:   item.date || new Date().toISOString(),\n    // Pass through raw for reference\n    _raw:         item\n  }\n};"
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "🔧 Normalize Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 400],
+      "notes": "Extracts and normalizes all fields from the raw Gmail payload.\nSeparates sender name from email address.\nExtracts first name for personalization.\nCleans up body text (removes excessive whitespace, caps at 3000 chars to save AI tokens).\nBuilds a lowercased fullText string used by the safety filter.\nOutput shape is consistent regardless of how Gmail formatted the original message."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Safety Filter\n// PURPOSE: Check for ANY language that should NEVER be\n//          auto-replied to. This is the most important\n//          safety gate in the entire workflow.\n// RULE:    If in doubt → flag it. Never auto-reply to\n//          anything sensitive.\n// ============================================================\n\nconst text = $input.item.json.fullTextLower || '';\n\n// --- CATEGORY 1: Legal & Complaint language ---\nconst legalPatterns = [\n  'complaint', 'complain', 'solicitor', 'solicitors',\n  'legal action', 'legal proceedings', 'lawsuit', 'sue you',\n  'taking you to court', 'court action', 'ombudsman',\n  'data breach', 'gdpr breach', 'ico', 'regulator',\n  'negligence', 'malpractice', 'report you', 'trading standards'\n];\n\n// --- CATEGORY 2: Safeguarding & Risk ---\nconst safeguardingPatterns = [\n  'safeguarding', 'safeguard', 'at risk', 'risk of harm',\n  'child at risk', 'abuse', 'neglect', 'exploitation',\n  'domestic violence', 'domestic abuse', 'threatened',\n  'threatening', 'violence', 'police', 'social services'\n];\n\n// --- CATEGORY 3: Mental health crisis & urgent risk ---\nconst crisisPatterns = [\n  'suicid', 'self harm', 'self-harm', 'selfharm',\n  'overdose', 'want to die', 'end my life', 'end it all',\n  'hurt myself', 'hurting myself', 'crisis', 'emergency',\n  'urgent help', 'in danger', 'not safe'\n];\n\n// --- Check all categories ---\nconst matchedLegal       = legalPatterns.filter(p => text.includes(p));\nconst matchedSafeguarding = safeguardingPatterns.filter(p => text.includes(p));\nconst matchedCrisis      = crisisPatterns.filter(p => text.includes(p));\n\nconst isFlagged = matchedLegal.length > 0 || matchedSafeguarding.length > 0 || matchedCrisis.length > 0;\n\nlet flagReason = '';\nlet flagCategory = '';\n\nif (matchedCrisis.length > 0) {\n  flagCategory = 'CRISIS_RISK';\n  flagReason = `Crisis/risk language detected: ${matchedCrisis.join(', ')}`;\n} else if (matchedSafeguarding.length > 0) {\n  flagCategory = 'SAFEGUARDING';\n  flagReason = `Safeguarding language detected: ${matchedSafeguarding.join(', ')}`;\n} else if (matchedLegal.length > 0) {\n  flagCategory = 'LEGAL_COMPLAINT';\n  flagReason = `Legal/complaint language detected: ${matchedLegal.join(', ')}`;\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    safety: {\n      isFlagged,\n      flagCategory,\n      flagReason\n    }\n  }\n};"
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "🚨 Safety Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 400],
+      "notes": "CRITICAL SAFETY NODE — runs before ANY AI or reply logic.\n\nChecks for 3 categories of dangerous language:\n1. Legal & Complaints: solicitor, legal action, ombudsman, GDPR breach, etc.\n2. Safeguarding: abuse, neglect, domestic violence, police, social services, etc.\n3. Crisis & Mental Health Risk: suicide, self-harm, overdose, crisis, etc.\n\nIf ANY match is found:\n- isFlagged = true\n- flagCategory identifies which type\n- flagReason lists the exact matched terms\n- Email is routed to manual review — NO auto-reply ever sent\n\nAdd more patterns to the arrays above if needed for your specific context."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "safety-check-1",
+              "leftValue": "={{ $json.safety.isFlagged }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "⚡ Is Safety Flagged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [840, 400],
+      "notes": "Routes flagged emails to immediate manual alert (true branch).\nClean emails continue to AI classification (false branch).\nThis is a hard gate — flagged emails NEVER reach the auto-reply nodes."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_WITH_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=⛔ URGENT MANUAL REVIEW — {{ $json.safety.flagCategory }} | From: {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px;\">\n  <div style=\"background: #dc2626; color: white; padding: 16px; border-radius: 8px 8px 0 0;\">\n    <h2 style=\"margin:0;\">⛔ Manual Review Required</h2>\n    <p style=\"margin:4px 0 0;\">This email has NOT been auto-replied to.</p>\n  </div>\n  <div style=\"background: #fef2f2; padding: 16px; border: 1px solid #fecaca;\">\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr><td style=\"padding:6px 0; font-weight:bold; width:140px;\">Flag Type:</td><td style=\"color:#dc2626; font-weight:bold;\">{{ $json.safety.flagCategory }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Trigger Words:</td><td>{{ $json.safety.flagReason }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">From:</td><td>{{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Subject:</td><td>{{ $json.subject }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Received:</td><td>{{ $json.receivedAt }}</td></tr>\n    </table>\n  </div>\n  <div style=\"background: white; padding: 16px; border: 1px solid #e5e7eb; border-top: none;\">\n    <p style=\"font-weight:bold;\">Email Body:</p>\n    <div style=\"background: #f9fafb; padding: 12px; border-radius: 4px; white-space: pre-wrap;\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background: #f3f4f6; padding: 12px; border-radius: 0 0 8px 8px; font-size:12px; color:#6b7280;\">\n    Please review and respond manually in Gmail. Do not forward this alert externally.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "🔴 Alert Admin — Flagged Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1060, 220],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends a formatted HTML alert email to the admin inbox.\nIncludes: flag type, trigger words, sender details, full email body.\nDesigned to be scannable at a glance so admin can act immediately.\nREPLACE: sendTo with your actual admin email address."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Log Flagged Email to Google Sheets\n// PURPOSE: Ensure every flagged email is tracked even though\n//          no auto-reply was sent.\n// ============================================================\n// This node just passes data through — the actual Sheets write\n// happens in the node after this one. We keep it here to\n// allow adding extra logic (e.g. Slack alert) between flag\n// and logging without breaking the flow.\n\nreturn {\n  json: {\n    ...$input.item.json,\n    logStatus: 'FLAGGED_NO_REPLY',\n    autoReplied: false\n  }\n};"
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "📌 Prepare Flagged Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 220],
+      "notes": "Marks this email as FLAGGED_NO_REPLY before logging.\nEnsures the tracking sheet always has a complete record,\neven for emails that were never auto-replied to.\nAdmin can filter the sheet by status to see all flagged items."
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 800
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert email classifier for a private ADHD clinic in the UK. Your job is to analyse incoming enquiry emails and return a structured JSON classification. You must be precise, consistent, and conservative — when in doubt, use manual_review.\n\nReturn ONLY valid JSON. No markdown. No explanation. No code fences. Just the raw JSON object."
+            },
+            {
+              "role": "user",
+              "content": "=Classify this email and extract personalisation fields.\n\nEMAIL SUBJECT: {{ $json.subject }}\nEMAIL BODY:\n{{ $json.body }}\n\nReturn a JSON object with EXACTLY these fields:\n{\n  \"category\": one of [\"adult_adhd_assessment\", \"child_adhd_assessment\", \"follow_up\", \"medication_query\", \"gp_shared_care\", \"general_enquiry\", \"manual_review\"],\n  \"confidence\": number between 0.0 and 1.0,\n  \"reasoning\": \"one sentence explaining your classification\",\n  \"firstName\": \"patient or sender first name if clearly stated, else empty string\",\n  \"isChild\": true or false (is this enquiry about a child?),\n  \"gpName\": \"referring GP name if mentioned, else empty string\",\n  \"location\": \"city or area if mentioned, else empty string\",\n  \"mentionsPrice\": true or false,\n  \"mentionsWaitingTime\": true or false,\n  \"appointmentType\": \"what type of appointment they seem to need, in plain English\"\n}\n\nRules:\n- Use manual_review if confidence < 0.75\n- Use manual_review if the email is ambiguous or could belong to 2+ categories equally\n- isChild = true if they mention their child, a young person, or ask about paediatric services\n- gpName: look for 'Dr [Name]', 'referred by Dr', 'my GP is', 'from the practice of'\n- mentionsPrice: true if they ask about cost, fees, prices, how much, payment\n- mentionsWaitingTime: true if they ask about wait, how long, availability, next appointment"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "🤖 AI — Classify Email",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1060, 560],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_OPENAI_CREDENTIAL_ID",
+          "name": "Clinic OpenAI Key"
+        }
+      },
+      "notes": "Uses GPT-4o for email classification.\nModel: gpt-4o (fast, cost-effective, excellent at JSON output)\nTemperature: 0.1 (very low = consistent, predictable output)\nMax tokens: 800 (more than enough for the JSON response)\n\nThe system prompt is carefully tuned to:\n- Return only raw JSON (no markdown wrapping)\n- Be conservative with confidence scoring\n- Default to manual_review when uncertain\n\nCost estimate: ~0.001 USD per email at current GPT-4o pricing.\nREPLACE: Add your OpenAI API key as a credential."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Parse & Validate AI Response\n// PURPOSE: Safely parse the AI JSON. Handle every possible\n//          failure mode so the workflow NEVER crashes here.\n// RULE:    If anything goes wrong → manual_review.\n// ============================================================\n\nconst upstream = $input.item.json;\nlet aiText = '';\n\n// Handle different response shapes from OpenAI node\ntry {\n  aiText = upstream.text\n    || upstream.message?.content\n    || upstream.choices?.[0]?.message?.content\n    || upstream.content?.[0]?.text\n    || '';\n} catch(e) {\n  aiText = '';\n}\n\nlet classification = {};\n\ntry {\n  // Strip any accidental markdown fences\n  const cleaned = aiText\n    .replace(/```json/gi, '')\n    .replace(/```/g, '')\n    .trim();\n\n  classification = JSON.parse(cleaned);\n\n  // Validate required fields exist\n  const required = ['category', 'confidence'];\n  for (const field of required) {\n    if (classification[field] === undefined) {\n      throw new Error(`Missing required field: ${field}`);\n    }\n  }\n\n} catch (e) {\n  // Parsing failed — force manual review, log the error\n  classification = {\n    category: 'manual_review',\n    confidence: 0,\n    reasoning: `AI response parse failed: ${e.message}. Raw response: ${aiText.substring(0, 200)}`,\n    firstName: '',\n    isChild: false,\n    gpName: '',\n    location: '',\n    mentionsPrice: false,\n    mentionsWaitingTime: false,\n    appointmentType: 'Unknown'\n  };\n}\n\n// --- Confidence gate ---\n// Even if AI returned a category, if confidence is too low → manual review\nif (classification.confidence < 0.75 && classification.category !== 'manual_review') {\n  classification.originalCategory = classification.category;\n  classification.category = 'manual_review';\n  classification.reasoning = `Low confidence (${classification.confidence.toFixed(2)}). Original guess was: ${classification.originalCategory}. ${classification.reasoning}`;\n}\n\n// --- Use AI-extracted firstName if better than what we parsed from sender ---\n// Sender name parsing gets 'John Smith' → 'John'\n// AI may extract 'my daughter Emily' → 'Emily' (the actual patient)\nconst bestFirstName = (\n  (classification.firstName && classification.firstName.trim() !== '')\n    ? classification.firstName\n    : upstream.firstName\n) || 'there';\n\nreturn {\n  json: {\n    // Pass through all upstream fields\n    ...upstream,\n    // Override firstName with best available\n    firstName: bestFirstName,\n    // Attach classification\n    ai: classification,\n    category: classification.category,\n    confidence: classification.confidence,\n    // Convenience booleans used by template nodes\n    isChild: classification.isChild || false,\n    mentionsPrice: classification.mentionsPrice || false,\n    mentionsWaitingTime: classification.mentionsWaitingTime || false,\n    gpName: classification.gpName || '',\n    location: classification.location || '',\n    appointmentType: classification.appointmentType || ''\n  }\n};"
+      },
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "🧩 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 560],
+      "notes": "Bulletproof JSON parser for the AI response.\n\nHandles all failure modes:\n1. AI returns markdown-wrapped JSON → strips fences\n2. AI returns malformed JSON → catches parse error → manual_review\n3. Required fields missing → manual_review\n4. Confidence < 0.75 → overrides to manual_review\n\nAlso intelligently picks the best 'firstName':\n- If AI detected the patient name (e.g. 'my son Tom') it uses that\n- Otherwise falls back to the sender's first name\n- Last resort: 'there' (so emails never say 'Dear ,')\n\nThis node is the most defensively coded in the workflow.\nEvery edge case sends to manual_review rather than risking a bad auto-reply."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "adult_adhd_assessment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "adult_adhd"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "child_adhd_assessment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "child_adhd"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "follow_up",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "follow_up"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "medication_query",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "medication"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "gp_shared_care",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "gp_shared_care"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "general_enquiry",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "general"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "🔀 Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1500, 560],
+      "notes": "Routes to the correct template branch.\nOutputs: adult_adhd | child_adhd | follow_up | medication | gp_shared_care | general\nFallback (including manual_review): goes to the manual review alert node.\nAll 6 template branches eventually merge into the same Send Reply node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — Adult ADHD Assessment\n// ============================================================\n// INSTRUCTIONS: Replace the TEMPLATE_BODY section below\n// with your actual adult ADHD assessment template text.\n// Keep the {{ firstName }} and conditional blocks — they\n// auto-insert personalisation at send time.\n// ============================================================\n\nconst d = $input.item.json;\nconst firstName = d.firstName || 'there';\n\nlet body = `Dear ${firstName},\n\nThank you so much for getting in touch with us — we really appreciate you reaching out.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR ADULT ADHD ASSESSMENT TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nWe would be delighted to support you through our adult ADHD assessment pathway. Our assessments are carried out by experienced specialist consultants who provide a thorough, compassionate evaluation tailored to you.\n\nThe process typically involves:\n• An initial consultation to understand your background and concerns\n• A comprehensive diagnostic assessment (usually 2–3 hours)\n• A detailed written report with our findings and recommendations\n• A follow-up appointment to discuss next steps and, if appropriate, treatment options\n\n// ============================================================\n// ▲▲▲ PASTE YOUR TEMPLATE ABOVE THIS LINE ▲▲▲\n// ============================================================\n`;\n\n// --- Conditional: Waiting time ---\nif (d.mentionsWaitingTime) {\n  body += `\\nRegarding your question about waiting times: we are currently seeing new adult assessment patients within approximately [X weeks] of receiving a completed referral. We will confirm your exact appointment date as soon as your information is received.\\n`;\n}\n\n// --- Conditional: Pricing ---\nif (d.mentionsPrice) {\n  body += `\\nRegarding fees: our adult ADHD assessment is priced at [£XXX]. This covers the full assessment, written report, and follow-up consultation. We will provide a complete breakdown when confirming your appointment.\\n`;\n}\n\n// --- Conditional: Location ---\nif (d.location) {\n  body += `\\nWe note you mentioned ${d.location} — we can confirm we have [clinic/remote] options available that would be convenient for you.\\n`;\n}\n\nbody += `\\nTo take the next step, please reply to this email or call us on [PHONE NUMBER] and one of our friendly admin team will be happy to help.\\n\\nWarm regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'Adult ADHD Assessment',\n    ccEmail: 'REPLACE_ADULT_ADHD_CONSULTANT@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "📝 Template — Adult ADHD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 240],
+      "notes": "Adult ADHD Assessment template.\n\nTO CUSTOMISE:\n1. Find the section marked PASTE YOUR TEMPLATE\n2. Replace the placeholder paragraphs with your actual template text\n3. Keep the firstName variable and conditional blocks\n4. Update ccEmail to your adult ADHD consultant's email\n5. Replace [PHONE NUMBER], [Clinic Name] etc. with real values\n\nConditional blocks automatically:\n- Add waiting time info if patient asked about it\n- Add pricing info if patient asked about cost\n- Acknowledge their location if they mentioned one"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — Child ADHD Assessment\n// ============================================================\n// NOTE: Tone is warmer and directed at the parent/guardian.\n// The firstName here is the CHILD's name if AI detected it,\n// or the sender's name if not.\n// ============================================================\n\nconst d = $input.item.json;\nconst firstName = d.firstName || 'there';\n\nlet body = `Dear ${firstName},\n\nThank you for reaching out to us. We understand how important it is to get the right support for your child, and we want you to know you've come to the right place.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR CHILD ADHD ASSESSMENT TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nOur child ADHD assessment is conducted by specialist paediatric consultants who are experienced in working with children and young people of all ages. We create a relaxed, friendly environment to make the process as comfortable as possible for both your child and your family.\n\nThe assessment typically includes:\n• A detailed parent/guardian consultation\n• A direct assessment session with your child (age-appropriate)\n• Liaison with school if appropriate and consented\n• A comprehensive written report\n• A follow-up appointment to discuss findings and next steps\n\n// ============================================================\n// ▲▲▲ PASTE YOUR TEMPLATE ABOVE THIS LINE ▲▲▲\n// ============================================================\n`;\n\nif (d.mentionsWaitingTime) {\n  body += `\\nRegarding waiting times: we are currently booking child assessments within approximately [X weeks]. We will be in touch shortly to arrange a time that suits your family.\\n`;\n}\n\nif (d.mentionsPrice) {\n  body += `\\nRegarding our fees: the child ADHD assessment is [£XXX]. Full details will be provided when we confirm the appointment.\\n`;\n}\n\nbody += `\\nIf you have any questions at all — please don't hesitate to get in touch. We're always happy to speak with you.\\n\\nWarm regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'Child ADHD Assessment',\n    ccEmail: 'REPLACE_CHILD_ADHD_CONSULTANT@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0011-0011-0011-000000000011",
+      "name": "📝 Template — Child ADHD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 380],
+      "notes": "Child ADHD Assessment template.\nTone is deliberately warmer and parent-facing.\nUpdate ccEmail to your paediatric consultant's address.\nReplace all placeholder values before going live."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — Follow-Up Enquiry\n// ============================================================\n\nconst d = $input.item.json;\nconst firstName = d.firstName || 'there';\n\nlet body = `Dear ${firstName},\n\nThank you for getting in touch with us.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR FOLLOW-UP TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nWe have received your follow-up enquiry and a member of our team will review this and get back to you as soon as possible.\n\nIf your query is time-sensitive, please don't hesitate to call us directly on [PHONE NUMBER] during our office hours ([HOURS]).\n\n// ============================================================\n// ▲▲▲ END OF TEMPLATE ▲▲▲\n// ============================================================\n\nKind regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'Follow-Up Enquiry',\n    ccEmail: 'REPLACE_ADMIN@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0012-0012-0012-000000000012",
+      "name": "📝 Template — Follow Up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 520],
+      "notes": "Follow-Up Enquiry template.\nKept concise — these are existing patients who need a quick acknowledgement.\nUpdate ccEmail to the appropriate admin or consultant."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — Medication Query\n// ============================================================\n// IMPORTANT: Never provide clinical advice in auto-replies.\n// This template acknowledges the query and directs to the\n// prescribing consultant. Safety first.\n// ============================================================\n\nconst d = $input.item.json;\nconst firstName = d.firstName || 'there';\n\nlet body = `Dear ${firstName},\n\nThank you for contacting us regarding your medication.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR MEDICATION QUERY TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nWe have received your query and will ensure it is passed on to the appropriate member of your care team.\n\nPlease note that for specific clinical advice regarding your medication — including dosage, side effects, or any changes to your prescription — you will need to speak directly with your prescribing consultant. Our admin team are not able to provide clinical guidance.\n\nWe will aim to respond with further information within [X working days]. If this is urgent, please call us on [PHONE NUMBER].\n\n// ============================================================\n// ▲▲▲ END OF TEMPLATE ▲▲▲\n// ============================================================\n\nKind regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'Medication Query',\n    ccEmail: 'REPLACE_PRESCRIPTIONS@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0013-0013-0013-000000000013",
+      "name": "📝 Template — Medication Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 660],
+      "notes": "Medication Query template.\nDeliberately avoids any clinical language or advice.\nAutomatically CCs the prescriptions/medication team.\nAlways directs patient to speak with their consultant directly."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — GP / Shared Care\n// ============================================================\n// Tone is professional and clinical — this email may be going\n// to a GP, practice manager, or NHS professional.\n// If AI detected the GP's name it is inserted automatically.\n// ============================================================\n\nconst d = $input.item.json;\nconst recipientName = d.gpName ? `Dr ${d.gpName}` : (d.firstName !== 'there' ? d.firstName : 'Doctor');\n\nlet body = `Dear ${recipientName},\n\nThank you for your enquiry regarding shared care arrangements.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR GP / SHARED CARE TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nWe welcome referrals and shared care arrangements with GP practices and are committed to working collaboratively to support your patients.\n\nTo proceed, we would ask that you provide the following information:\n• Patient name and date of birth\n• Reason for referral / current concerns\n• Any relevant history or previous assessments\n• Your preferred contact method for clinical correspondence\n\nA member of our clinical team will review your enquiry and respond within [X working days].\n\n// ============================================================\n// ▲▲▲ END OF TEMPLATE ▲▲▲\n// ============================================================\n\nWe look forward to working with you to support your patient's care.\\n\\nKind regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'GP / Shared Care',\n    ccEmail: 'REPLACE_GP_LIAISON@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0014-0014-0014-000000000014",
+      "name": "📝 Template — GP Shared Care",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 800],
+      "notes": "GP / Shared Care template.\nProfessional, clinical tone appropriate for NHS/GP correspondence.\nAuto-inserts GP name as 'Dr [Name]' if AI detected it.\nCCs the GP liaison or clinical lead automatically."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Build Template — General Enquiry\n// ============================================================\n\nconst d = $input.item.json;\nconst firstName = d.firstName || 'there';\n\nlet body = `Dear ${firstName},\n\nThank you for getting in touch with us.\n\n// ============================================================\n// ▼▼▼ PASTE YOUR GENERAL ENQUIRY TEMPLATE BELOW ▼▼▼\n// ============================================================\n\nWe have received your enquiry and a member of our admin team will be in touch shortly with a full response.\n\nIn the meantime, if you have any urgent questions, you're welcome to call us on [PHONE NUMBER] during office hours ([HOURS]).\n\n// ============================================================\n// ▲▲▲ END OF TEMPLATE ▲▲▲\n// ============================================================\n\nKind regards,\\n[Admin Name]\\nAdmin Team\\n[Clinic Name]\\n[Phone Number] | [Website]`;\n\nreturn {\n  json: {\n    ...d,\n    emailSubject: `Re: ${d.subject}`,\n    emailBody: body,\n    categoryLabel: 'General Enquiry',\n    ccEmail: 'REPLACE_ADMIN@yourclinic.co.uk'\n  }\n};"
+      },
+      "id": "a1b2c3d4-0015-0015-0015-000000000015",
+      "name": "📝 Template — General Enquiry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 940],
+      "notes": "General Enquiry catch-all template.\nWarm and open. Acknowledges the email and sets expectations.\nUpdate ccEmail to your general admin inbox."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.senderEmail }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {
+          "ccList": "={{ $json.ccEmail }}",
+          "replyTo": "REPLACE_WITH_CLINIC_EMAIL@yourclinic.co.uk",
+          "sendAsEmail": "REPLACE_WITH_CLINIC_EMAIL@yourclinic.co.uk",
+          "threadId": "={{ $json.threadId }}"
+        }
+      },
+      "id": "a1b2c3d4-0016-0016-0016-000000000016",
+      "name": "📤 Send Auto-Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1960, 580],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends the personalised auto-reply.\nUses threadId to reply within the same Gmail thread (keeps conversation tidy).\nCCs the relevant consultant/admin from the template node.\nreplyTo and sendAsEmail ensure replies come back to the clinic inbox.\n\nREPLACE:\n- sendAsEmail: your clinic email address\n- replyTo: your clinic email address\n\nAll 6 template branches feed into this single send node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Prepare Log Row\n// PURPOSE: Build a clean, consistent data object for logging\n//          to Google Sheets and creating the Drive folder.\n//          Runs after successful send.\n// ============================================================\n\nconst d = $input.item.json;\n\nreturn {\n  json: {\n    ...d,\n    logStatus: 'AUTO_REPLIED',\n    autoReplied: true,\n    logTimestamp: new Date().toISOString(),\n    logDate: new Date().toLocaleDateString('en-GB'),\n    logTime: new Date().toLocaleTimeString('en-GB'),\n    folderName: `${new Date().toISOString().split('T')[0]} — ${d.senderName} — ${d.categoryLabel || d.category}`\n  }\n};"
+      },
+      "id": "a1b2c3d4-0017-0017-0017-000000000017",
+      "name": "📋 Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 580],
+      "notes": "Prepares the log entry after successful send.\nBuilds: timestamp, date, time, folder name, status.\nFolder name format: YYYY-MM-DD — Sender Name — Category\nThis ensures Drive folders are neatly organised and sortable."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Enquiries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp":     "={{ $json.logTimestamp }}",
+            "Date":          "={{ $json.logDate }}",
+            "Time":          "={{ $json.logTime }}",
+            "Name":          "={{ $json.senderName }}",
+            "Email":         "={{ $json.senderEmail }}",
+            "Category":      "={{ $json.categoryLabel || $json.category }}",
+            "AI Confidence": "={{ $json.confidence }}",
+            "Status":        "={{ $json.logStatus }}",
+            "Auto Replied":  "={{ $json.autoReplied }}",
+            "Subject":       "={{ $json.subject }}",
+            "AI Reasoning":  "={{ $json.ai.reasoning }}",
+            "Location":      "={{ $json.location }}",
+            "GP Name":       "={{ $json.gpName }}",
+            "Is Child":      "={{ $json.isChild }}",
+            "Drive Folder":  "=Pending"
+          }
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0018-0018-0018-000000000018",
+      "name": "📊 Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2400, 580],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Clinic Google Sheets OAuth2"
+        }
+      },
+      "notes": "Logs every processed email to your tracking Google Sheet.\n\nREQUIRED SHEET SETUP:\nCreate a Google Sheet with a tab named 'Enquiries'\nRow 1 must have these exact column headers:\nTimestamp | Date | Time | Name | Email | Category | AI Confidence | Status | Auto Replied | Subject | AI Reasoning | Location | GP Name | Is Child | Drive Folder\n\nREPLACE:\n- documentId: The ID from your Google Sheet URL\n  (URL format: docs.google.com/spreadsheets/d/[THIS_IS_THE_ID]/edit)\n\nFlagged emails are also logged (via the separate flag branch)\nwith Status = FLAGGED_NO_REPLY."
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.folderName }}",
+        "parents": ["REPLACE_WITH_PARENT_DRIVE_FOLDER_ID"],
+        "options": {}
+      },
+      "id": "a1b2c3d4-0019-0019-0019-000000000019",
+      "name": "📁 Create Drive Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [2620, 580],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Clinic Google Drive OAuth2"
+        }
+      },
+      "notes": "Creates a new Google Drive folder for each enquiry.\nFolder name: YYYY-MM-DD — Sender Name — Category\nFolders are sorted chronologically automatically.\n\nREPLACE:\n- parents: The ID of your main 'Enquiries' or 'Clients' folder in Drive.\n  Right-click the folder → Get link → the ID is after /folders/ in the URL.\n\nAfter this node, the Drive folder link is updated in the Sheets log."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Enquiries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Drive Folder": "={{ $json.webViewLink || $json.id }}"
+          }
+        },
+        "where": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $('📊 Log to Google Sheets').item.json.senderEmail }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0020-0020-0020-000000000020",
+      "name": "🔗 Update Sheet with Drive Link",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2840, 580],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Clinic Google Sheets OAuth2"
+        }
+      },
+      "notes": "After the Drive folder is created, this node updates the same row in the sheet\nwith the clickable link to the new folder.\nAdmin can click directly from the sheet to open the patient's folder."
+    },
+    {
+      "parameters": {
+        "sendTo": "REPLACE_WITH_ADMIN_EMAIL@yourclinic.co.uk",
+        "subject": "=🟡 Manual Review — {{ $json.categoryLabel || $json.category }} | From: {{ $json.senderName }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px;\">\n  <div style=\"background: #d97706; color: white; padding: 16px; border-radius: 8px 8px 0 0;\">\n    <h2 style=\"margin:0;\">🟡 Manual Review Required</h2>\n    <p style=\"margin:4px 0 0;\">AI confidence was too low to auto-reply. Please respond manually.</p>\n  </div>\n  <div style=\"background: #fffbeb; padding: 16px; border: 1px solid #fde68a;\">\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr><td style=\"padding:6px 0; font-weight:bold; width:160px;\">From:</td><td>{{ $json.senderName }} &lt;{{ $json.senderEmail }}&gt;</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Subject:</td><td>{{ $json.subject }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">AI Best Guess:</td><td>{{ $json.ai.originalCategory || $json.category }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Confidence:</td><td>{{ $json.confidence }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">AI Reasoning:</td><td>{{ $json.ai.reasoning }}</td></tr>\n      <tr><td style=\"padding:6px 0; font-weight:bold;\">Received:</td><td>{{ $json.receivedAt }}</td></tr>\n    </table>\n  </div>\n  <div style=\"background: white; padding: 16px; border: 1px solid #e5e7eb; border-top: none;\">\n    <p style=\"font-weight:bold;\">Email Body:</p>\n    <div style=\"background: #f9fafb; padding: 12px; border-radius: 4px; white-space: pre-wrap;\">{{ $json.body }}</div>\n  </div>\n  <div style=\"background: #f3f4f6; padding: 12px; border-radius: 0 0 8px 8px; font-size:12px; color:#6b7280;\">\n    This email has been logged in your tracking sheet with status MANUAL_REVIEW.\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0021-0021-0021-000000000021",
+      "name": "🟡 Alert Admin — Manual Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1960, 980],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CREDENTIAL_ID",
+          "name": "Clinic Gmail OAuth2"
+        }
+      },
+      "notes": "Sends a formatted alert for low-confidence classifications.\nDifferent colour from the safety flag (yellow vs red) so admin can\nquickly distinguish between: dangerous email (red) vs unclear email (yellow).\nIncludes AI's best guess and reasoning so admin can see what the AI thought.\nAlso catches the switch node's fallback output."
+    }
+  ],
+  "connections": {
+    "📬 Gmail — Watch New Emails": {
+      "main": [[{ "node": "🔧 Normalize Email Data", "type": "main", "index": 0 }]]
+    },
+    "🔧 Normalize Email Data": {
+      "main": [[{ "node": "🚨 Safety Filter", "type": "main", "index": 0 }]]
+    },
+    "🚨 Safety Filter": {
+      "main": [[{ "node": "⚡ Is Safety Flagged?", "type": "main", "index": 0 }]]
+    },
+    "⚡ Is Safety Flagged?": {
+      "main": [
+        [{ "node": "🔴 Alert Admin — Flagged Email", "type": "main", "index": 0 }],
+        [{ "node": "🤖 AI — Classify Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔴 Alert Admin — Flagged Email": {
+      "main": [[{ "node": "📌 Prepare Flagged Log Entry", "type": "main", "index": 0 }]]
+    },
+    "📌 Prepare Flagged Log Entry": {
+      "main": [[{ "node": "📊 Log to Google Sheets", "type": "main", "index": 0 }]]
+    },
+    "🤖 AI — Classify Email": {
+      "main": [[{ "node": "🧩 Parse AI Response", "type": "main", "index": 0 }]]
+    },
+    "🧩 Parse AI Response": {
+      "main": [[{ "node": "🔀 Route by Category", "type": "main", "index": 0 }]]
+    },
+    "🔀 Route by Category": {
+      "main": [
+        [{ "node": "📝 Template — Adult ADHD", "type": "main", "index": 0 }],
+        [{ "node": "📝 Template — Child ADHD", "type": "main", "index": 0 }],
+        [{ "node": "📝 Template — Follow Up", "type": "main", "index": 0 }],
+        [{ "node": "📝 Template — Medication Query", "type": "main", "index": 0 }],
+        [{ "node": "📝 Template — GP Shared Care", "type": "main", "index": 0 }],
+        [{ "node": "📝 Template — General Enquiry", "type": "main", "index": 0 }],
+        [{ "node": "🟡 Alert Admin — Manual Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "📝 Template — Adult ADHD": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📝 Template — Child ADHD": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📝 Template — Follow Up": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📝 Template — Medication Query": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📝 Template — GP Shared Care": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📝 Template — General Enquiry": {
+      "main": [[{ "node": "📤 Send Auto-Reply", "type": "main", "index": 0 }]]
+    },
+    "📤 Send Auto-Reply": {
+      "main": [[{ "node": "📋 Prepare Log Data", "type": "main", "index": 0 }]]
+    },
+    "📋 Prepare Log Data": {
+      "main": [[{ "node": "📊 Log to Google Sheets", "type": "main", "index": 0 }]]
+    },
+    "📊 Log to Google Sheets": {
+      "main": [[{ "node": "📁 Create Drive Folder", "type": "main", "index": 0 }]]
+    },
+    "📁 Create Drive Folder": {
+      "main": [[{ "node": "🔗 Update Sheet with Drive Link", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": true,
+    "timezone": "Europe/London"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "adhd-clinic" },
+    { "name": "email-triage" },
+    { "name": "milestone-1" }
+  ],
+  "_setupChecklist": {
+    "description": "Complete all items below before activating the workflow",
+    "items": [
+      "[ ] 1. Create Gmail OAuth2 credential → replace REPLACE_GMAIL_CREDENTIAL_ID everywhere",
+      "[ ] 2. Create OpenAI API credential → replace REPLACE_OPENAI_CREDENTIAL_ID",
+      "[ ] 3. Create Google Sheets OAuth2 credential → replace REPLACE_GOOGLE_SHEETS_CREDENTIAL_ID",
+      "[ ] 4. Create Google Drive OAuth2 credential → replace REPLACE_GOOGLE_DRIVE_CREDENTIAL_ID",
+      "[ ] 5. Replace REPLACE_WITH_ADMIN_EMAIL with your admin email address (appears in 2 nodes)",
+      "[ ] 6. Replace REPLACE_WITH_CLINIC_EMAIL in Send Auto-Reply node",
+      "[ ] 7. Create Google Sheet with tab named 'Enquiries' and correct column headers",
+      "[ ] 8. Replace REPLACE_WITH_GOOGLE_SHEET_ID with your Sheet ID (appears in 2 nodes)",
+      "[ ] 9. Create a parent folder in Google Drive for enquiries",
+      "[ ] 10. Replace REPLACE_WITH_PARENT_DRIVE_FOLDER_ID with that folder's ID",
+      "[ ] 11. Paste your actual email templates into each Template node",
+      "[ ] 12. Replace ccEmail values in each template node with real consultant emails",
+      "[ ] 13. Replace placeholder [Clinic Name], [PHONE NUMBER] etc. in all templates",
+      "[ ] 14. Test with a real test email before going live",
+      "[ ] 15. Activate the workflow (toggle in top right)"
+    ]
+  }
+}
