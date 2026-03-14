@@ -1,0 +1,445 @@
+{
+  "name": "Automated Lead Capture & Notification System V2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture",
+        "options": {
+          "noResponseBody": false,
+          "responseData": "JSON"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -384,
+        1392
+      ],
+      "id": "2907e4c4-0966-4044-92ef-41138d09343c",
+      "name": "Webhook",
+      "webhookId": "2fa1e502-4d8a-435a-8a97-161adb43ddac"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fields = items[0].json.body?.data?.fields || [];\n\nconst getField = (label) => {\n  const f = fields.find(f => f.label === label);\n  return f ? String(f.value || '').trim() : '';\n};\n\nconst name    = getField('Name')             || items[0].json.name    || '';\nconst email   = getField('What is your Email') || items[0].json.email   || '';\nconst phone   = getField('Phone Number')     || items[0].json.phone   || '';\nconst message = getField('Leave a Message')  || items[0].json.message || '';\nconst source  = items[0].json.body?.data?.formName || 'Website Form';\n\n// Validate\nif (!name)              throw new Error('Lead rejected: missing name');\nif (!email && !phone)   throw new Error('Lead rejected: missing email and phone');\n\n// Score\nlet score = 0;\nif (phone)                  score += 30;\nif (email)                  score += 20;\nif (message.length > 80)    score += 30;\nif (message.length > 20)    score += 10;\nif (message.length > 0)     score += 10;\n\nconst tier = score >= 70 ? 'High Priority' : score >= 40 ? 'Medium Priority' : 'Low Priority';\n\nitems[0].json.full_name   = name;\nitems[0].json.email       = email;\nitems[0].json.phone       = phone;\nitems[0].json.message     = message;\nitems[0].json.source      = source;\nitems[0].json.score       = score;\nitems[0].json.tier        = tier;\nitems[0].json.status      = 'New';\nitems[0].json.received_at = new Date().toISOString();\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        1392
+      ],
+      "id": "fe35c189-a9a7-4aaa-82b5-3d33744ac0d9",
+      "name": "Extract, Validate & Score Lead1"
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appalRUWhlohm8JG9",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbll1FJIBEHQarja8",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9/tbll1FJIBEHQarja8"
+        },
+        "filterByFormula": "=OR({Email}='{{ $json.email }}', {Phone}='{{ $json.phone }}')",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        1392
+      ],
+      "id": "c1911a62-7b1c-4d3e-b9f1-5d7f33d9a121",
+      "name": "Check for Existing Lead1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $node['Extract, Validate & Score Lead1'].json;\nconst searchResults = items;\n\nconst isDuplicate = searchResults.length > 0 && searchResults[0].json.id;\nconst existingId  = isDuplicate ? searchResults[0].json.id : null;\n\nitems[0].json = {\n  ...lead,\n  is_duplicate: isDuplicate,\n  existing_record_id: existingId,\n  airtable_action: isDuplicate ? 'update' : 'create'\n};\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1392
+      ],
+      "id": "f5b3f26c-37f7-49f4-9fc0-7607955e6d8d",
+      "name": "Check Duplicate1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.airtable_action }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "ccb96695-7670-4804-961d-047cb4bd375f"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        1392
+      ],
+      "id": "fa45eb92-f709-444a-ac56-4bca2db84316",
+      "name": "New or Existing?1"
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appalRUWhlohm8JG9",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbll1FJIBEHQarja8",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9/tbll1FJIBEHQarja8"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.full_name }}",
+            "Email": "={{ $json.email }}",
+            "Phone": "={{ $json.phone }}",
+            "Message": "={{ $json.message }}",
+            "Lead Source": "={{ $json.source }}",
+            "Status": "New"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Lead Source",
+              "displayName": "Lead Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        736,
+        1296
+      ],
+      "id": "d050d1b0-aef6-4860-9561-eb9c5b44f799",
+      "name": "Create New Lead Record1"
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appalRUWhlohm8JG9",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbll1FJIBEHQarja8",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9/tbll1FJIBEHQarja8"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.existing_record_id }}",
+            "Message": "={{ $json.message }}",
+            "Status": "Re-engaged"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": true,
+              "defaultMatch": true,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        736,
+        1488
+      ],
+      "id": "e0fa8585-8dce-4dae-bf1e-1bc1c08ca58e",
+      "name": "Update Existing Lead Record1"
+    },
+    {
+      "parameters": {
+        "chatId": "1982389908",
+        "text": "=*{{ $json.tier }} — {{ $json.is_duplicate ? 'Returning Lead' : 'New Lead' }}*\n\n👤 *Name:* {{ $json.full_name }}\n📧 *Email:* {{ $json.email }}\n📞 *Phone:* {{ $json.phone }}\n💬 *Message:* {{ $json.message }}\n📊 *Score:* {{ $json.score }}/100\n🔗 *Source:* {{ $json.source }}\n\n{{ $json.is_duplicate ? 'Already in records — updated.' : 'Saved to records.' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        1392
+      ],
+      "id": "650d55c6-a587-4d69-9977-ebfc936b28de",
+      "name": "Notify Team1",
+      "webhookId": "963ee303-1670-4f16-b411-70c0d4e50c72"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"received\": true }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        1392
+      ],
+      "id": "1a68c313-736b-43f3-a048-ae90b925da25",
+      "name": "Respond to Webhook1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract, Validate & Score Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract, Validate & Score Lead1": {
+      "main": [
+        [
+          {
+            "node": "Check for Existing Lead1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Existing Lead1": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate1": {
+      "main": [
+        [
+          {
+            "node": "New or Existing?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New or Existing?1": {
+      "main": [
+        [
+          {
+            "node": "Create New Lead Record1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Existing Lead Record1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Lead Record1": {
+      "main": [
+        [
+          {
+            "node": "Notify Team1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Existing Lead Record1": {
+      "main": [
+        [
+          {
+            "node": "Notify Team1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Team1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5108fc9b-237c-41c7-ab48-2d1150b8d9c2",
+  "meta": {
+    "instanceId": "b12e0d940eebeec8cbb3e48cdf7680c2666966ed234c6692cf0d9bbd5860456e"
+  },
+  "id": "OS8KlEDXiQtDwpbc",
+  "tags": []
+}
