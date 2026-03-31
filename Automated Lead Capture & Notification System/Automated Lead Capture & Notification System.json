@@ -18,11 +18,11 @@
       ],
       "id": "263278cb-87cc-4107-a21c-3934632951b2",
       "name": "Webhook",
-      "webhookId": "2fa1e502-4d8a-435a-8a97-161adb43ddac"
+      "webhookId": "YOUR_WEBHOOK_ID"
     },
     {
       "parameters": {
-        "chatId": "1982389908",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "text": "=New Lead Received! \nName: {{ $json.fields.Name }}\nEmail: {{ $json.fields.Email }}\nPhone: {{ $json.fields.Phone }}\nMessage: {{ $json.fields.Message }}\n",
         "additionalFields": {
           "appendAttribution": false
@@ -36,10 +36,10 @@
       ],
       "id": "544b2b17-90f7-4431-ab13-3fac6a54e4d3",
       "name": "Send a text message",
-      "webhookId": "3aece340-2c6c-49c9-967c-c4e1a67fb32e",
+      "webhookId": "YOUR_TELEGRAM_WEBHOOK_ID",
       "credentials": {
         "telegramApi": {
-          "id": "8cxTdHcuTZ3fdwvV",
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
           "name": "Telegram account"
         }
       }
@@ -50,14 +50,14 @@
         "operation": "create",
         "base": {
           "__rl": true,
-          "value": "appalRUWhlohm8JG9",
+          "value": "YOUR_AIRTABLE_BASE_ID",
           "mode": "list",
           "cachedResultName": "CRM",
           "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9"
         },
         "table": {
           "__rl": true,
-          "value": "tbll1FJIBEHQarja8",
+          "value": "YOUR_AIRTABLE_TABLE_ID",
           "mode": "list",
           "cachedResultName": "Leads",
           "cachedResultUrl": "https://airtable.com/appalRUWhlohm8JG9/tbll1FJIBEHQarja8"
@@ -213,7 +213,7 @@
       "name": "Create a record",
       "credentials": {
         "airtableOAuth2Api": {
-          "id": "qkyGi3Mi6fdJynB1",
+          "id": "YOUR_AIRTABLE_CREDENTIAL_ID",
           "name": "Airtable Personal Access Token account"
         }
       }
@@ -275,7 +275,7 @@
   "versionId": "04183481-e212-4008-b14e-d8185e0819ee",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "c1c92bbe3c539f6f99d0a44206d9f105f1dbb9c289367ebc220f4ae4965f6ef7"
+    "instanceId": "YOUR_INSTANCE_ID"
   },
   "id": "qaBZlioKUlpqarVO",
   "tags": []
