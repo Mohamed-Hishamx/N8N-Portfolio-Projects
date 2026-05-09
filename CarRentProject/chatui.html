@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quicky Car Support | Apex Cycle AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chat-gradient { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); }
+        .user-msg { background: #2563eb; color: white; border-radius: 18px 18px 2px 18px; }
+        .ai-msg { background: #ffffff; color: #1e293b; border-radius: 18px 18px 18px 2px; border: 1px solid #e2e8f0; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-900 h-screen flex items-center justify-center p-4 font-sans">
+
+    <div class="w-full max-w-md h-[600px] bg-slate-50 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+        
+        <div class="bg-white border-b border-slate-200 p-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl">Q</div>
+                <div>
+                    <h1 class="font-bold text-slate-800 leading-none text-lg">Quicky Car Support</h1>
+                    <span class="text-xs text-green-500 font-medium">● Online</span>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-tight">Powered by</p>
+                <p class="text-[10px] text-blue-600 font-black uppercase tracking-tighter">Apex Cycle</p>
+            </div>
+        </div>
+
+        <div id="chat-box" class="flex-1 overflow-y-auto p-4 space-y-4 chat-gradient">
+            <div class="flex justify-start">
+                <div class="ai-msg p-3 max-w-[80%] shadow-sm text-sm">
+                    Welcome to Quicky Car Egypt! 🇪🇬 How can I help you with your rental today?
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white border-t border-slate-200">
+            <form id="chat-form" class="flex gap-2">
+                <input type="text" id="user-input" autocomplete="off" placeholder="Ask about prices, cars, or locations..." 
+                    class="flex-1 bg-slate-100 border-none rounded-full px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 w-10 h-10 flex items-center justify-center transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        // Replace with your actual n8n Webhook URL (Production or Test)
+        // Example: https://your-n8n-instance.com/webhook/YOUR-WEBHOOK-PATH
+        const WEBHOOK_URL = "YOUR_N8N_WEBHOOK_URL_HERE";
+
+        // Generate a unique Session ID for this chat window (used by n8n Memory node)
+        const mySessionId = "user_" + Math.floor(Math.random() * 1000000);
+
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatBox = document.getElementById('chat-box');
+
+        // --- 2. UI HELPERS ---
+        function addMessage(text, isUser = false) {
+            const wrapper = document.createElement('div');
+            wrapper.className = isUser ? 'flex justify-end' : 'flex justify-start';
+            
+            const div = document.createElement('div');
+            div.className = `${isUser ? 'user-msg' : 'ai-msg'} p-3 max-w-[80%] shadow-sm text-sm`;
+            div.innerText = text;
+            
+            wrapper.appendChild(div);
+            chatBox.appendChild(wrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // --- 3. SENDING LOGIC ---
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Display user message
+            addMessage(message, true);
+            userInput.value = '';
+
+            // Show typing indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loading-indicator';
+            loadingDiv.className = 'flex justify-start items-center gap-2 text-slate-400 text-xs italic p-2';
+            loadingDiv.innerHTML = '<span class="animate-bounce">●</span> Quicky Car AI is thinking...';
+            chatBox.appendChild(loadingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message: message,
+                        sessionId: mySessionId // Important for n8n Memory nodes
+                    })
+                });
+
+                const data = await response.json();
+                
+                // Remove loading and show AI response
+                const indicator = document.getElementById('loading-indicator');
+                if (indicator) chatBox.removeChild(indicator);
+                
+                addMessage(data.reply || "I'm having trouble connecting. Please try again!");
+            } catch (error) {
+                const indicator = document.getElementById('loading-indicator');
+                if (indicator) chatBox.removeChild(indicator);
+                addMessage("Connection error. Make sure n8n is running and listening for events.");
+                console.error("Fetch Error:", error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+{
+  "name": "Knowledge Base Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.message }}\n\n\n\"You are the official customer support AI for Quicky Car, a premium car rental platform. Your job is to assist users in a friendly, professional, and concise manner.\n\nWhen a user asks questions about our vehicles, policies, or pricing, YOU MUST use the Supabase Vector Store tool to search for the correct information before answering. Do not guess or make up facts. If the tool does not contain the answer, politely inform the user that you don't have that specific information and offer to escalate to a human agent. Keep your answers brief and formatting clean.\"",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [288, 0],
+      "id": "65478d58-9c8d-49d5-a25b-0a387239954f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"reply\": {{ JSON.stringify($json.output) }} }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [848, 0],
+      "id": "a9f52475-947d-425d-a99b-adc67c699815",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [224, 224],
+      "id": "a8cba7f2-7753-4aae-9c86-fd9dfcb384f2",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Use this tool to search the Quicky Car knowledge base. Call this tool when a customer asks about rental policies, vehicle specifications, pricing, insurance, or general company rules. Do NOT use this tool for casual greetings.",
+        "tableName": {
+          "__rl": true,
+          "value": "=rpc/match_documents",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [480, 224],
+      "id": "682004b1-04dd-4055-9e59-e0b7bc45263c",
+      "name": "Supabase Vector Store",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
+      "typeVersion": 1,
+      "position": [560, 432],
+      "id": "786f7a90-2477-456d-b44b-6fb20526bb36",
+      "name": "Embeddings HuggingFace Inference",
+      "credentials": {
+        "huggingFaceApi": {
+          "id": "YOUR_HUGGINGFACE_CREDENTIAL_ID",
+          "name": "Hugging Face account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [352, 224],
+      "id": "987086e1-383c-4fbb-8d05-114724d55429",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "YOUR_WEBHOOK_PATH",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "dde1eee3-6be3-4b0a-b9ec-16417129d624",
+      "name": "chat",
+      "webhookId": "YOUR_WEBHOOK_ID"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Supabase Vector Store": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "Embeddings HuggingFace Inference": {
+      "ai_embedding": [[{ "node": "Supabase Vector Store", "type": "ai_embedding", "index": 0 }]]
+    },
+    "Simple Memory": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "chat": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

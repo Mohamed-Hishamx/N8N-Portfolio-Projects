@@ -1,0 +1,132 @@
+{
+  "name": "Quicky Car - Knowledge Base Ingestion",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "148ddd72-c999-405b-8850-c21fbd245b5f",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d482ccc8-8e04-4d16-a270-74125f685051",
+              "name": "my_document",
+              "value": "# Quicky Car - Vehicle Fleet and Pricing Guide (2026) All prices are listed in Egyptian Pounds (EGP) per day. All vehicles include unlimited mileage within the Greater Cairo area.  ## Economy Class * Nissan Sunny (Automatic): 600 EGP / day. Seats 5, 2 bags, 1.5L engine. Excellent fuel economy, perfect for city driving. * Hyundai Elantra (Automatic): 800 EGP / day. Seats 5, 3 bags, 1.6L engine. Standard features include Bluetooth and a rearview camera.  ## SUV & Family Class * Kia Sportage (Automatic): 1,500 EGP / day. Seats 5, 4 bags, 1.6L Turbo. Premium interior, Apple CarPlay, and panoramic sunroof. * Skoda Kodiaq (Automatic): 2,200 EGP / day. Seats 7, 5 bags. Ideal for large families traveling to the North Coast or Red Sea.  ## Luxury & Executive Class * Mercedes-Benz C180: 3,500 EGP / day. Seats 5. Premium leather interior, advanced driver assistance. Chauffeur service available for an additional 1,000 EGP / day. * BMW 5 Series: 4,000 EGP / day. Seats 5. Ultimate luxury and performance.   # Quicky Car - Customer Rental Policies and Requirements ## Age and License Requirements The minimum age to rent a vehicle with Quicky Car is 21 years old. Drivers under 25 are subject to a \"Young Driver Fee\" of 150 EGP per day. Egyptian citizens must present a valid National ID and a local driver's license. Tourists and non-residents must present a valid Passport and an International Driving Permit (IDP).  ## Security Deposit A refundable security deposit is required for all rentals.  * Economy vehicles require a 5,000 EGP deposit. * SUV and Luxury vehicles require a 15,000 EGP deposit. Deposits must be paid via Credit Card (Visa or Mastercard). Cash deposits are strictly not accepted. The deposit is released within 7-14 business days after the vehicle is returned in good condition.  ## Fuel Policy All vehicles are supplied with a full tank of fuel. The vehicle must be returned with a full tank. If the vehicle is returned with less than a full tank, Quicky Car will charge a refueling fee of 50 EGP per liter required to fill the tank.  # Quicky Car - Operations, Locations, and Support ## Branch Locations Quicky Car operates out of three primary hubs: 1. Cairo International Airport (CAI): Terminal 2 Arrivals Hall. Open 24/7. 2. Nasr City Branch: Makram Ebeid Street. Open 9:00 AM to 10:00 PM daily. 3. Zayed City Branch: Arkan Plaza. Open 10:00 AM to 11:00 PM daily.  ## Late Return Fees Vehicles must be returned at the agreed-upon time. Quicky Car offers a 2-hour grace period. If the vehicle is returned more than 2 hours late, a full additional day's rental rate will be charged automatically.  ## Insurance Coverage All rentals include Basic Comprehensive Insurance. In the event of an accident where the renter is at fault, the maximum out-of-pocket deductible the renter must pay is 10,000 EGP.  Customers can purchase the \"Zero Deductible Shield\" for an extra 300 EGP per day, which removes all financial liability in case of an accident or theft, provided a police report is filed.  ## Roadside Assistance We offer 24/7 free roadside assistance within Cairo and Giza. If a car breaks down, a replacement vehicle of the same class or higher will be delivered within 90 minutes.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [224, 0],
+      "id": "cd3cc6f9-65be-4b97-b8ba-273d42462fc7",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.my_document }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "source",
+                "value": "quicky_car_policy"
+              }
+            ]
+          }
+        }
+      },
+      "id": "fd97426d-1abd-44de-8a6b-9db470927867",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [576, 224]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "=documents",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "750ce490-d2b7-4458-9382-44c0e2b1fd35",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [480, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chunkSize": 500,
+        "chunkOverlap": 50,
+        "options": {}
+      },
+      "id": "3a70a347-e748-4d5c-a5b1-57457cc5b7b7",
+      "name": "Recursive Character Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [656, 432]
+    },
+    {
+      "parameters": {
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "options": {}
+      },
+      "id": "9a172329-2c93-440b-a5f5-a3d1cdcbc7c9",
+      "name": "Embeddings HuggingFace Inference API",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
+      "typeVersion": 1,
+      "position": [304, 240],
+      "credentials": {
+        "huggingFaceApi": {
+          "id": "YOUR_HUGGINGFACE_CREDENTIAL_ID",
+          "name": "Hugging Face account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [[{ "node": "Edit Fields", "type": "main", "index": 0 }]]
+    },
+    "Edit Fields": {
+      "main": [[{ "node": "Supabase Vector Store", "type": "main", "index": 0 }]]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [[{ "node": "Default Data Loader", "type": "ai_textSplitter", "index": 0 }]]
+    },
+    "Embeddings HuggingFace Inference API": {
+      "ai_embedding": [[{ "node": "Supabase Vector Store", "type": "ai_embedding", "index": 0 }]]
+    },
+    "Default Data Loader": {
+      "ai_document": [[{ "node": "Supabase Vector Store", "type": "ai_document", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
