@@ -1,0 +1,1108 @@
+{
+  "name": "Relay Content Pipeline — HITL Challenge (Free Edition)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🎯 Relay Content Pipeline — Human-in-the-Loop (100% Free)\n\n**Brief → Sofia (Strategy) → Marcus (Creative + Image Gen) → Taylor (QA) → Video Creation → Published Post**\n\nEvery stage: AI agent + human review form + feedback loop. Reviewers approve, revise (with notes), or reject.\n💸 **All free:** Google Gemini (free tier) for AI, Pollinations.ai (no API key) for images, FFmpeg for video.\nBrand context loaded once in Config — swap clients by editing one node.",
+        "height": 236,
+        "width": 5200,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e5b76310-5865-4f18-bcee-a2e4542ae2c5",
+      "name": "Note — Overview"
+    },
+    {
+      "parameters": {
+        "content": "### 💸 Free Setup Guide\n\n**1. Google Gemini (AI — free)**\nGo to aistudio.google.com → Get API Key\nPaste it into each Gemini credential node.\nFree tier: 15 requests/min, 1M tokens/day.\n\n**2. Pollinations.ai (Images — free)**\nNo API key needed. Works via URL.\nThe HTTP Request node handles it.\n\n**3. FFmpeg (Video — free)**\nSelf-hosted n8n: `apt install ffmpeg`\nMac: `brew install ffmpeg`\nIf FFmpeg isn't installed, the video\nstep is skipped — you still get the image.\n\n**Alternative LLMs (also free):**\n• Groq — fast, free tier\n• Ollama — fully local, no API key\n• OpenRouter — some free models",
+        "height": 392,
+        "width": 308,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        272
+      ],
+      "id": "8dc93d9b-00b2-4fdd-8b09-4d5f1ba09e65",
+      "name": "Note — Free Setup Guide"
+    },
+    {
+      "parameters": {
+        "content": "### 📥 Intake\nForm trigger captures the brief.\nConfig node loads ALL brand context\nso every AI agent references\none source of truth.",
+        "height": 320,
+        "width": 480,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        64,
+        304
+      ],
+      "id": "fb1c6c3a-c46e-43e2-b110-202d9b2927c1",
+      "name": "Note — Intake"
+    },
+    {
+      "parameters": {
+        "content": "### 🧠 Stage 1 — Sofia (Strategy)\nAI proposes 3 content angles.\nSofia reviews via HITL form.\n✅ Approve → picks an angle → Marcus\n🔄 Revise → feedback loops back with notes\n❌ Reject → kills the brief cleanly\n\nFeedback is injected into the next AI run\nso the output actually improves.",
+        "height": 420,
+        "width": 960,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        656,
+        288
+      ],
+      "id": "7367f937-7757-45da-bafd-ec2b24d77e3e",
+      "name": "Note — Sofia Stage"
+    },
+    {
+      "parameters": {
+        "content": "### ✍️ Stage 2 — Marcus (Creative + Image)\nAI writes post copy + image direction.\n🖼️ Pollinations.ai generates the actual image\nfrom the AI's visual description — no API key!\nMarcus reviews text AND the generated image.\n✅ Approve → Taylor\n🔄 Revise → feedback loop regenerates both",
+        "height": 404,
+        "width": 1280,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1744,
+        272
+      ],
+      "id": "0a77892a-e8a1-436c-8728-686b41946158",
+      "name": "Note — Marcus Stage"
+    },
+    {
+      "parameters": {
+        "content": "### ✅ Stage 3 — Taylor (Final QA)\nAI summarises the post, flags issues,\ngives a recommendation.\nTaylor makes the final call:\n✅ Approve → video is created → publish\n🔄 Back to Marcus → revision notes\n❌ Reject to Sofia → restart angles\n\nTaylor's feedback reaches the RIGHT\nstage — not just a generic retry.",
+        "height": 420,
+        "width": 1100,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3104,
+        272
+      ],
+      "id": "b83bfb9c-40cc-470b-995c-b46909c41a69",
+      "name": "Note — Taylor Stage"
+    },
+    {
+      "parameters": {
+        "content": "### 🎬 Media Output\nAfter Taylor approves:\n1. FFmpeg creates a 15s\n   video from the generated\n   image (Ken Burns zoom\n   + fade transitions)\n2. Final Output logs\n   post + image + video\n\nReplace with Google Sheet,\nSlack, or any destination.",
+        "height": 400,
+        "width": 380
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4304,
+        272
+      ],
+      "id": "031fec4d-e81a-4d1a-a9bf-3768f6407344",
+      "name": "Note — Media Output"
+    },
+    {
+      "parameters": {
+        "content": "### 💡 Tips for Scoring Higher\n\n• **HITL Design (40%)** — Every rejection feeds specific notes back to the AI. The prompt changes on retry. 4 feedback loops total.\n• **Quality & Client Fit (30%)** — Brand guide + platform playbook in Config. AI agents reference them. Image generated on-brand.\n• **Workflow Efficiency (15%)** — Config is single source of truth. Swap clients by editing one node. Image/video auto-sized per platform.\n• **AI Usage (10%)** — Prompts are role-specific with full context. Temperature tuned per role. Feedback-aware.\n• **Creativity (5%)** — Actual image generation via Pollinations. Video creation via FFmpeg. Taylor has 3-way routing. AI pre-flags issues.",
+        "height": 260,
+        "width": 1300,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        656,
+        1008
+      ],
+      "id": "4270c142-0286-419d-8fd0-ec8966e7de24",
+      "name": "Note — Scoring Tips"
+    },
+    {
+      "parameters": {
+        "formTitle": "Relay — Content Brief Intake",
+        "formDescription": "Submit a new content request. This kicks off the full pipeline: Strategy → Creative (with AI image) → QA → Video → Publish.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client",
+              "placeholder": "e.g. Loopin",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Platform",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "LinkedIn"
+                  },
+                  {
+                    "option": "X"
+                  },
+                  {
+                    "option": "Instagram"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Content Type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Thought leadership"
+                  },
+                  {
+                    "option": "Product announcement"
+                  },
+                  {
+                    "option": "Customer story"
+                  },
+                  {
+                    "option": "Culture post"
+                  },
+                  {
+                    "option": "Data post"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Topic Hint",
+              "placeholder": "e.g. Async communication vs meetings"
+            },
+            {
+              "fieldLabel": "Tone Note",
+              "placeholder": "e.g. Confident and direct, founder's voice"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        448
+      ],
+      "id": "712f9f82-8811-4318-ba06-bfd2979d4d2c",
+      "name": "Brief Intake Form",
+      "webhookId": "e4732e44-509f-4cf8-8ef7-fdb12fad5499",
+      "notesInFlow": true,
+      "notes": "Entry point. Client + platform + content type required. Topic hint and tone note optional."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"client\": \"{{ $json['Client'] }}\",\n  \"platform\": \"{{ $json['Platform'] }}\",\n  \"content_type\": \"{{ $json['Content Type'] }}\",\n  \"topic_hint\": \"{{ $json['Topic Hint'] || 'No specific topic hint provided — research freely.' }}\",\n  \"tone_note\": \"{{ $json['Tone Note'] || 'Use the default brand tone for this platform.' }}\",\n\n  \"brand_voice\": \"Direct, clear, and human. Loopin speaks like a smart colleague who respects your time. No jargon, no fluff, no corporate filler. Every sentence should earn its place.\",\n  \"brand_personality\": \"Confident but not arrogant. Opinionated but backed by evidence. Warm but efficient. Think: the coworker who always has the best take in the meeting — and says it in half the words everyone else would use.\",\n  \"key_messages\": \"1) Meetings should have purpose, not just a calendar invite. 2) Async-first doesn't mean anti-meeting — it means choosing the right format for the right conversation. 3) Your calendar reflects your priorities — make sure it shows the right ones. 4) Great teams don't need more meetings — they need better ones.\",\n  \"language_avoid\": \"synergy, leverage, circle back, touch base, ping me, move the needle, low-hanging fruit, deep dive, align, paradigm shift, at the end of the day, it goes without saying, in terms of, utilize, learnings, cadence, net-net, boil the ocean\",\n  \"target_audience\": \"Operations managers, team leads, founders, and heads of remote/hybrid teams at companies with 50-500 employees. They are drowning in meetings and looking for a better way to collaborate.\",\n\n  \"tone_linkedin\": \"Professional but approachable. Thought leadership with substance, not fluff. Write like you are sharing a genuine insight with a peer — not pitching from a stage. Paragraphs, not bullet storms.\",\n  \"tone_x\": \"Sharp, concise, slightly provocative. Conversation starters, not press releases. Hot takes backed by cold data. Threads welcome when the topic earns it.\",\n  \"tone_instagram\": \"Warm, visual-first, team-culture focused. Show the human side of async work. Carousel-friendly. Captions should feel like a teammate talking, not a brand broadcasting.\",\n\n  \"visual_identity\": \"Primary: #2D5BFF (electric blue), #1A1A2E (deep navy), #FFFFFF (white). Accent: #00D4AA (mint green for highlights). Style: Clean, minimal, bold typography over solid or gradient backgrounds. No stock photos of people in glass meeting rooms. Prefer illustrations, data visualisations, or real team photos with natural lighting.\",\n  \"image_composition\": \"Hero text large and centered. Supporting copy small and bottom-aligned. Always leave breathing room — minimum 20% whitespace. Brand mark bottom-right, subtle. Carousel slides: one idea per slide, consistent layout across all slides.\",\n\n  \"specs_linkedin\": \"Character limit: 3000. Optimal length: 1300-1500 characters. Hashtags: 3-5 max, placed at the end. Image: 1200x627px or 1080x1080px. First line must hook — it is the only thing visible before see more. No emojis in first line.\",\n  \"specs_x\": \"Character limit: 280 per tweet. Threads: 3-7 tweets optimal. Hashtags: 1-2 max, integrated naturally. Image: 1200x675px. First tweet must stand alone — do not front-load with Thread: or 1/. Include a clear CTA or question in the last tweet.\",\n  \"specs_instagram\": \"Caption limit: 2200 characters. Optimal first line: 125-150 characters (visible before truncation). Hashtags: 20-30, placed in first comment or after line breaks. Image: 1080x1080px (square), 1080x1350px (portrait), 1080x566px (landscape). Carousel: up to 10 slides, 1080x1080px each.\",\n\n  \"lastFeedback\": \"\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        448
+      ],
+      "id": "819eda0e-b27d-404c-b6fa-70791286824d",
+      "name": "Config — Brand + Brief",
+      "notesInFlow": true,
+      "notes": "Single source of truth. All brand context + brief fields. To switch clients, update this node only."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## Content Brief\n- **Client:** {{ $json.client }}\n- **Platform:** {{ $json.platform }}\n- **Content Type:** {{ $json.content_type }}\n- **Topic Hint:** {{ $json.topic_hint }}\n- **Tone Note:** {{ $json.tone_note }}\n\n## Your Task\nResearch the topic and propose exactly **3 distinct content angle options** for this brief.\n\nFor each angle, provide:\n1. **Angle Title** — a short, clear name\n2. **Hook** — the opening line or question that would grab the audience\n3. **Rationale** — 2-3 sentences on why this angle fits the client's brand, audience, and platform\n4. **Content Direction** — brief outline of what the post would cover\n\nMake sure your angles are:\n- Distinct from each other (not variations of the same idea)\n- Aligned with the brand voice and platform tone\n- Appropriate for the {{ $json.platform }} audience\n- Relevant to the \"{{ $json.content_type }}\" format\n- Grounded in a real insight, data point, or trend — not generic advice\n\n{{ $json.lastFeedback ? '## REVISION REQUESTED\\nYour previous angles were rejected by the strategist. Here is their feedback:\\n\\n> ' + $json.lastFeedback + '\\n\\nAddress this feedback directly. Do NOT repeat the same type of angles. Show that you understood the note and adjusted your approach.' : '' }}\n\nFormat your response clearly with headers for each angle. Number them 1, 2, 3.",
+        "options": {
+          "systemMessage": "=You are Sofia's AI research assistant at Relay, a social media agency. Your job is to propose strong content angle options that a human strategist (Sofia) will review.\n\nYou always ground your angles in the client's brand identity and the target platform's audience expectations. You never produce generic content — every angle should feel specifically crafted for this client.\n\n## Client Brand Context\n**Brand Voice:** {{ $json.brand_voice }}\n**Brand Personality:** {{ $json.brand_personality }}\n**Key Messages:** {{ $json.key_messages }}\n**Target Audience:** {{ $json.target_audience }}\n**Language to AVOID:** {{ $json.language_avoid }}\n\n## Platform Context\n**Platform:** {{ $json.platform }}\n**Platform Tone:** {{ $json.platform === 'LinkedIn' ? $json.tone_linkedin : $json.platform === 'X' ? $json.tone_x : $json.tone_instagram }}\n\nAlways think about: What would make someone stop scrolling? What angle serves both the client's goals AND the audience's interests?"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        704,
+        496
+      ],
+      "id": "f8bfb821-9c0b-4500-95eb-c0c1826d9168",
+      "name": "Sofia — AI Agent",
+      "notesInFlow": true,
+      "notes": "Generates 3 content angles. Uses brand context + brief. Handles revision feedback from Sofia's loop."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "True",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "c647cbea-63a5-45b6-a300-8f03d88a7a21"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "False",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    },
+                    "id": "050f2531-48fd-48ee-843e-53dbcd2b5111"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Revise"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1424,
+        464
+      ],
+      "id": "96a21cd1-aa2a-4910-b9fc-92cfb0ccae46",
+      "name": "Sofia — Decision Router",
+      "notesInFlow": true,
+      "notes": "Routes to Marcus (approve), back to Sofia AI (revise), or ends workflow (reject)."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"client\": \"{{ $('Config — Brand + Brief').item.json.client }}\",\n  \"platform\": \"{{ $('Config — Brand + Brief').item.json.platform }}\",\n  \"content_type\": \"{{ $('Config — Brand + Brief').item.json.content_type }}\",\n  \"topic_hint\": \"{{ $('Config — Brand + Brief').item.json.topic_hint }}\",\n  \"tone_note\": \"{{ $('Config — Brand + Brief').item.json.tone_note }}\",\n  \"brand_voice\": \"{{ $('Config — Brand + Brief').item.json.brand_voice }}\",\n  \"brand_personality\": \"{{ $('Config — Brand + Brief').item.json.brand_personality }}\",\n  \"key_messages\": \"{{ $('Config — Brand + Brief').item.json.key_messages }}\",\n  \"language_avoid\": \"{{ $('Config — Brand + Brief').item.json.language_avoid }}\",\n  \"target_audience\": \"{{ $('Config — Brand + Brief').item.json.target_audience }}\",\n  \"tone_linkedin\": \"{{ $('Config — Brand + Brief').item.json.tone_linkedin }}\",\n  \"tone_x\": \"{{ $('Config — Brand + Brief').item.json.tone_x }}\",\n  \"tone_instagram\": \"{{ $('Config — Brand + Brief').item.json.tone_instagram }}\",\n  \"visual_identity\": \"{{ $('Config — Brand + Brief').item.json.visual_identity }}\",\n  \"image_composition\": \"{{ $('Config — Brand + Brief').item.json.image_composition }}\",\n  \"specs_linkedin\": \"{{ $('Config — Brand + Brief').item.json.specs_linkedin }}\",\n  \"specs_x\": \"{{ $('Config — Brand + Brief').item.json.specs_x }}\",\n  \"specs_instagram\": \"{{ $('Config — Brand + Brief').item.json.specs_instagram }}\",\n  \"lastFeedback\": \"{{ $json['Feedback Notes'] }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        800
+      ],
+      "id": "6bf5c049-f348-46b2-9a3e-6588254053bb",
+      "name": "Sofia — Pass Feedback",
+      "notesInFlow": true,
+      "notes": "Carries Sofia's revision notes + full brand context back into her AI agent."
+    },
+    {
+      "parameters": {
+        "content": "### 🔄 Sofia Feedback Loop\nSofia's notes are injected into\nthe AI prompt via `lastFeedback`.\nThe agent sees WHY the angles\nwere rejected and adjusts —\nnot just retries blindly.",
+        "height": 184,
+        "width": 236,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        752
+      ],
+      "id": "765a0d4e-3036-4fd0-beb6-e58b38cf11bd",
+      "name": "Note — Sofia Loop"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "==## Approved Content Angle\n{{ $('Sofia — AI Agent').item.json.output }}\n\n## Brief Context\n- Client: {{ $('Config — Brand + Brief').item.json.client }}\n- Platform: {{ $('Config — Brand + Brief').item.json.platform }}\n- Content Type: {{ $('Config — Brand + Brief').item.json.content_type }}\n- Tone Note: {{ $('Config — Brand + Brief').item.json.tone_note }}\n\n## Your Task\nCreate a complete social media post based on the approved angle above.\n\n### 1. POST COPY\nWrite the full post copy for {{ $('Config — Brand + Brief').item.json.platform }}. Follow these rules:\n{{ $('Config — Brand + Brief').item.json.platform === 'LinkedIn' ? $('Config — Brand + Brief').item.json.specs_linkedin : $('Config — Brand + Brief').item.json.platform === 'X' ? $('Config — Brand + Brief').item.json.specs_x : $('Config — Brand + Brief').item.json.specs_instagram }}\n\n- Match the brand voice exactly\n- Use the platform-specific tone\n- Include appropriate hashtags per platform spec\n- Make the first line a scroll-stopper\n\n### 2. IMAGE DIRECTION\nDescribe the visual asset in detail:\n- Subject/scene description\n- Colour palette: use #2D5BFF, #1A1A2E, #FFFFFF, #00D4AA\n- Typography: what text appears on the image\n- Layout and composition\n- Mood: clean, minimal, bold\n- Dimensions: {{ $('Config — Brand + Brief').item.json.platform === 'LinkedIn' ? '1200x627' : $('Config — Brand + Brief').item.json.platform === 'X' ? '1200x675' : '1080x1080' }}\n\nIMPORTANT: IMAGE DIRECTION will be used as an AI image generation prompt. Be specific and visual.\n\n{{ $json.lastFeedback ? '## REVISION REQUESTED\\nFeedback:\\n' + $json.lastFeedback + '\\n\\nAddress every point.' : '' }}\n\nFormat your response with clear headers: POST COPY then IMAGE DIRECTION.",
+        "options": {
+          "systemMessage": "=You are Marcus's AI creative assistant at Relay, a social media agency. Your job is to turn approved content angles into publish-ready social media posts with matching visual direction.\n\nYou write copy that sounds like a human wrote it — not AI. You match the client's brand voice precisely. You follow platform specs to the letter.\n\nIMPORTANT: Your IMAGE DIRECTION output will be fed directly into an AI image generator (Pollinations.ai). Write it as a detailed visual description — colours, composition, text overlay, mood. Not as notes for a designer.\n\n## Client Brand Context\n**Brand Voice:** {{ $('Config — Brand + Brief').item.json.brand_voice }}\n**Brand Personality:** {{ $('Config — Brand + Brief').item.json.brand_personality }}\n**Key Messages:** {{ $('Config — Brand + Brief').item.json.key_messages }}\n**Target Audience:** {{ $('Config — Brand + Brief').item.json.target_audience }}\n**Language to AVOID:** {{ $('Config — Brand + Brief').item.json.language_avoid }}\n\n## Platform Tone\n{{ $('Config — Brand + Brief').item.json.platform === 'LinkedIn' ? $('Config — Brand + Brief').item.json.tone_linkedin : $('Config — Brand + Brief').item.json.platform === 'X' ? $('Config — Brand + Brief').item.json.tone_x : $('Config — Brand + Brief').item.json.tone_instagram }}\n\n## Visual Identity\n{{ $('Config — Brand + Brief').item.json.visual_identity }}\n\n## Image Composition Rules\n{{ $('Config — Brand + Brief').item.json.image_composition }}\n\nYour copy should feel crafted, not generated. Your image direction should be vivid and specific."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1824,
+        448
+      ],
+      "id": "8472bb4d-dec9-424d-ac80-305a3f4b2685",
+      "name": "Marcus — AI Agent",
+      "notesInFlow": true,
+      "notes": "Writes post copy + image direction (used as prompt for AI image generation). Handles revision feedback."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Marcus's AI output to extract image direction and build Pollinations URL\nconst items = $input.all();\nconst item = items[0];\nconst output = item.json.output || '';\nconst config = $('Config — Brand + Brief').first().json;\n\n// Extract the IMAGE DIRECTION section from Marcus's output\nlet imagePrompt = 'Professional minimalist social media graphic, bold typography, blue gradient background, clean modern design';\n\n// Try to find IMAGE DIRECTION section\nconst imageMatch = output.match(/(?:IMAGE DIRECTION|VISUAL DIRECTION|Image Direction)[:\\s]*([\\s\\S]*?)(?=\\n\\n## |\\n\\n------|$)/i);\nif (imageMatch && imageMatch[1]) {\n  imagePrompt = imageMatch[1]\n    .replace(/^[#*\\s]+/gm, '')\n    .replace(/\\n+/g, ', ')\n    .replace(/\\*\\*/g, '')\n    .trim()\n    .substring(0, 450);\n}\n\n// Add brand visual cues to the prompt\nimagePrompt += ', electric blue #2D5BFF and deep navy #1A1A2E color scheme, clean minimal design, professional, high quality';\n\n// Set dimensions based on platform\nconst dims = {\n  'LinkedIn': { w: 1200, h: 627 },\n  'X': { w: 1200, h: 675 },\n  'Instagram': { w: 1080, h: 1080 }\n};\nconst { w, h } = dims[config.platform] || dims['LinkedIn'];\n\n// Build Pollinations.ai URL (completely free, no API key needed)\nconst encodedPrompt = encodeURIComponent(imagePrompt);\nconst imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${w}&height=${h}&nologo=true&seed=${Date.now()}`;\n\nreturn [{\n  json: {\n    output: output,\n    image_url: imageUrl,\n    image_prompt: imagePrompt.substring(0, 200) + '...',\n    image_width: w,\n    image_height: h,\n    platform: config.platform\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        448
+      ],
+      "id": "faa702d4-212e-4634-97bf-b03603b4af9b",
+      "name": "Parse & Generate Image URL",
+      "notesInFlow": true,
+      "notes": "Extracts image direction from Marcus's AI output, builds a Pollinations.ai URL. Free, no API key."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.image_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2448,
+        448
+      ],
+      "id": "8bad9c29-b1ee-4a40-a6ca-8ee644929cf5",
+      "name": "Download Generated Image",
+      "notesInFlow": true,
+      "notes": "Downloads the AI-generated image from Pollinations.ai. Stored as binary for review + video creation."
+    },
+    {
+      "parameters": {
+        "content": "### 🖼️ Image Generation Pipeline\n\n**Code node** parses Marcus's AI output\nand extracts the IMAGE DIRECTION section.\n\n**Pollinations.ai** generates the actual\nimage from that description — completely\nfree, no API key, no signup.\n\nImage dimensions auto-adjust:\n• LinkedIn: 1200x627\n• X: 1200x675\n• Instagram: 1080x1080\n\nMarcus reviews the real image in his form.",
+        "height": 340,
+        "width": 916,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        944
+      ],
+      "id": "e5f61146-d97c-424c-89b7-f61e43a2fc47",
+      "name": "Note — Image Generation"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "Approve",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "c832916a-b670-4c93-a8df-2bf872be9a12"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "Revise",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    },
+                    "id": "c0687ea1-8c5b-4ace-9804-4ff6a0e0b9c2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Revise"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2864,
+        432
+      ],
+      "id": "b67bedb0-479e-46a6-ba86-bd8ea9645c61",
+      "name": "Marcus — Decision Router",
+      "notesInFlow": true,
+      "notes": "Routes to Taylor (approve) or back to Marcus AI (revise with notes)."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"lastFeedback\": \"{{ $json['Feedback Notes'] }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2864,
+        704
+      ],
+      "id": "01818cad-a68c-4d54-b351-c0e82f3cef39",
+      "name": "Marcus — Pass Feedback",
+      "notesInFlow": true,
+      "notes": "Feeds Marcus's revision notes back to creative AI. Image will also regenerate on the next pass."
+    },
+    {
+      "parameters": {
+        "content": "### 🔄 Marcus Feedback Loop\nMarcus's notes go into the AI prompt.\nBoth post copy AND image regenerate\non revision — the image changes\nbecause the image direction changes.\nNot a blind retry.",
+        "height": 200,
+        "width": 380,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2432,
+        688
+      ],
+      "id": "0705c5dc-47b7-4257-b8d0-f74f4f013945",
+      "name": "Note — Marcus Loop"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## Post to Review\n\n{{ $('Marcus — AI Agent').item.json.output }}\n\n---\n\n**Generated Image URL:** {{ $('Parse & Generate Image URL').item.json.image_url }}\n(The image was generated by AI based on Marcus's image direction)\n\n---\n\n## Original Brief\n- **Client:** {{ $('Config — Brand + Brief').item.json.client }}\n- **Platform:** {{ $('Config — Brand + Brief').item.json.platform }}\n- **Content Type:** {{ $('Config — Brand + Brief').item.json.content_type }}\n- **Topic Hint:** {{ $('Config — Brand + Brief').item.json.topic_hint }}\n- **Tone Note:** {{ $('Config — Brand + Brief').item.json.tone_note }}\n\n## Your Task\nPerform a final quality review of this post before it goes live.\n\n### 1. Post Summary\n2-3 sentences: what does the post say and what is it trying to achieve?\n\n### 2. Quality Flags\nCheck against these criteria and flag issues:\n- **Character count** — Within optimal range for {{ $('Config — Brand + Brief').item.json.platform }}?\n- **Brand voice** — Matches the client's voice and personality? Any off-brand language?\n- **Platform fit** — Correct format, hashtag count, structure?\n- **Audience relevance** — Will the target audience care? Does the hook work?\n- **Language avoid list** — Any banned phrases that slipped through?\n- **Image direction** — Is it specific, on-brand, and will the generated image work?\n- **Content type match** — Does the post deliver on the requested content type?\n\nList each issue as a short, actionable flag. If no issues: \"No flags — post is clean.\"\n\n### 3. AI Recommendation\nRecommend one of:\n- **APPROVE** — Post is ready to publish. Say why.\n- **BACK TO MARCUS** — Needs creative revisions. Specify what.\n- **REJECT TO SOFIA** — Angle is wrong. Explain why new angles are needed.\n\nBe honest and specific. Taylor makes the final call, your recommendation should be well-reasoned.",
+        "options": {
+          "systemMessage": "=You are Taylor's AI quality assistant at Relay, a social media agency. Your job is to help Taylor do the final quality check before any post goes live.\n\nYou are thorough, honest, and specific. You flag real issues — not nitpicks. You understand that a post needs to match the client's brand voice, meet platform specs, and serve the target audience.\n\n## Client Brand Context\n**Brand Voice:** {{ $('Config — Brand + Brief').item.json.brand_voice }}\n**Brand Personality:** {{ $('Config — Brand + Brief').item.json.brand_personality }}\n**Key Messages:** {{ $('Config — Brand + Brief').item.json.key_messages }}\n**Target Audience:** {{ $('Config — Brand + Brief').item.json.target_audience }}\n**Language to AVOID:** {{ $('Config — Brand + Brief').item.json.language_avoid }}\n\n## Platform Specs\n{{ $('Config — Brand + Brief').item.json.platform === 'LinkedIn' ? $('Config — Brand + Brief').item.json.specs_linkedin : $('Config — Brand + Brief').item.json.platform === 'X' ? $('Config — Brand + Brief').item.json.specs_x : $('Config — Brand + Brief').item.json.specs_instagram }}\n\n## Platform Tone\n{{ $('Config — Brand + Brief').item.json.platform === 'LinkedIn' ? $('Config — Brand + Brief').item.json.tone_linkedin : $('Config — Brand + Brief').item.json.platform === 'X' ? $('Config — Brand + Brief').item.json.tone_x : $('Config — Brand + Brief').item.json.tone_instagram }}\n\n## Visual Identity\n{{ $('Config — Brand + Brief').item.json.visual_identity }}\n\nBe the quality gate. If something is not right, say so clearly."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3168,
+        528
+      ],
+      "id": "ae410ac0-d63f-4061-a528-06f2695b3238",
+      "name": "Taylor — AI Agent",
+      "notesInFlow": true,
+      "notes": "Summarises post + image, flags issues, gives recommendation. Taylor uses this for her final call."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "Approve",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "533d9501-81c5-4331-acec-6325a4279426"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.approved }}",
+                    "rightValue": "Marcus",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    },
+                    "id": "b1682862-2da8-4241-96bc-bcfe0f3bef3c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Back to Marcus"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3840,
+        496
+      ],
+      "id": "79e05ac9-2756-4457-9d94-8e21d938d214",
+      "name": "Taylor — Decision Router",
+      "notesInFlow": true,
+      "notes": "3-way routing: video+publish (approve), back to Marcus (revise), or restart at Sofia (reject)."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"lastFeedback\": \"[Taylor QA revision — sent back to Marcus for creative changes]: {{ $json['Feedback Notes'] }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3856,
+        752
+      ],
+      "id": "de088a59-6ab9-4532-abf0-b5e2332e158a",
+      "name": "Taylor → Marcus Feedback",
+      "notesInFlow": true,
+      "notes": "Carries Taylor's notes to Marcus. Tagged as QA feedback so AI knows the source."
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"status\": \"APPROVED — Ready to Publish\",\n  \"client\": \"{{ $('Config — Brand + Brief').item.json.client }}\",\n  \"platform\": \"{{ $('Config — Brand + Brief').item.json.platform }}\",\n  \"content_type\": \"{{ $('Config — Brand + Brief').item.json.content_type }}\",\n  \n  \"final_post_copy\": \"{{ $('Marcus — AI Agent').item.json.output }}\",\n  \"image_url\": \"{{ $('Parse & Generate Image URL').item.json.image_url }}\",\n  \"video_status\": \"{{ $json.stdout ? JSON.parse($json.stdout).video_status : 'unknown' }}\",\n  \"video_path\": \"{{ $json.stdout ? JSON.parse($json.stdout).video_path : '' }}\",\n  \"image_path\": \"{{ $json.stdout ? JSON.parse($json.stdout).image_path : '' }}\",\n  \"quality_review\": \"{{ $('Taylor — AI Agent').item.json.output }}\",\n  \"approved_by\": \"Taylor\",\n  \"timestamp\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4448,
+        496
+      ],
+      "id": "755626f2-b222-4837-be8a-e0d405f2eb1a",
+      "name": "Final Output — Post + Image + Video",
+      "notesInFlow": true,
+      "notes": "All deliverables compiled: post copy, generated image URL, video file path, QA review. Connect to Google Sheets or Slack."
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "1982389908",
+        "message": "==🎯 New Brief Ready for Review\n\nClient: {{ $json.client }}\nPlatform: {{ $json.platform }}\nContent Type: {{ $json.content_type }}\nTopic: {{ $json.topic_hint }}\n\n---------------------------\nAI-Generated Angles:\n---------------------------\n\n{{ $json.cleanOutput }}\n\n---------------------------\nApprove = moves to Marcus\nDecline = revise with feedback",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Approve",
+            "disapproveLabel": "revise"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        480
+      ],
+      "id": "4a3b1533-2ee1-4e5e-99d9-4129ba6b53d7",
+      "name": "Send a text message",
+      "webhookId": "02bff93e-f3e6-4804-9db7-b2e198f37137",
+      "credentials": {
+        "telegramApi": {
+          "id": "WkgVOdDfvSCSx4x1",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sofiaOutput = $input.first().json.output || '';\nconst config = $('Config — Brand + Brief').item.json;\n\nconst escape = (str) => {\n  if (!str) return '';\n  return String(str).replace(/[_*[\\]()~`>#+=|{}.!-]/g, '\\\\$&');\n};\n\nconst formatAngles = (text) => {\n  return text\n    .replace(/##\\s*/g, '\\n*')\n    .replace(/\\n\\n/g, '\\n')\n    + '*';\n};\n\nreturn [{\n  json: {\n    cleanOutput: escape(sofiaOutput),\n    client: escape(config.client || 'N/A'),\n    platform: escape(config.platform || 'N/A'),\n    content_type: escape(config.content_type || 'N/A'),\n    topic_hint: escape(config.topic_hint || 'N/A')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        496
+      ],
+      "id": "f0aedbc5-f79b-47b5-a16a-0dc1c1262159",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        704,
+        688
+      ],
+      "id": "a9ec5058-07e3-429e-8462-5582feec70e8",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "1JksodFQknqwCZ7S",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        624
+      ],
+      "id": "6bc02b6d-37f4-4fca-9445-74f531bcbf5f",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "1JksodFQknqwCZ7S",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        3168,
+        720
+      ],
+      "id": "54a1fab8-a8cf-40d1-b40e-da6092302bf1",
+      "name": "Groq Chat Model2",
+      "credentials": {
+        "groqApi": {
+          "id": "1JksodFQknqwCZ7S",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "1982389908",
+        "message": "==Taylor — Final QA Review\n\nClient: {{ $('Config — Brand + Brief').item.json.client }}\nPlatform: {{ $('Config — Brand + Brief').item.json.platform }}\n\n---------------------------\nAI QUALITY REVIEW\n---------------------------\n\n{{ $('Taylor — AI Agent').item.json.output }}\n\n---------------------------\nGenerated Image:\n{{ $('Parse & Generate Image URL').item.json.image_url }}\n\n---------------------------\nApprove = publish this post\nDecline = send back to Marcus",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Approve: send to Taylor",
+            "disapproveLabel": "Revise: needs changes"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3600,
+        496
+      ],
+      "id": "a1d65caa-6de3-48c5-aa19-25b4b853c836",
+      "name": "Taylor review",
+      "webhookId": "02bff93e-f3e6-4804-9db7-b2e198f37137",
+      "credentials": {
+        "telegramApi": {
+          "id": "WkgVOdDfvSCSx4x1",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1982389908",
+        "text": "==✅ Post Approved and Ready to Publish!\n\nClient: {{ $json.client }}\nPlatform: {{ $json.platform }}\n\nPost copy and image are ready.\nImage: {{ $json.image_url }}\n\nApproved by Taylor at {{ $json.timestamp }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4736,
+        512
+      ],
+      "id": "e9794ec9-7d8f-4611-9066-d4f3fd8db768",
+      "name": "Final post",
+      "webhookId": "02bff93e-f3e6-4804-9db7-b2e198f37137",
+      "credentials": {
+        "telegramApi": {
+          "id": "WkgVOdDfvSCSx4x1",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "1982389908",
+        "message": "==Marcus — Creative Review\n\nClient: {{ $('Config — Brand + Brief').item.json.client }}\nPlatform: {{ $('Config — Brand + Brief').item.json.platform }}\nContent Type: {{ $('Config — Brand + Brief').item.json.content_type }}\n\n---------------------------\nPOST COPY + IMAGE DIRECTION\n---------------------------\n\n{{ $('Marcus — AI Agent').item.json.output }}\n\n---------------------------\nGenerated Image URL:\n{{ $('Parse & Generate Image URL').item.json.image_url }}\n\n---------------------------\nApprove = send to Taylor\nDecline = revise copy and image",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Approve: send to Taylor",
+            "disapproveLabel": "Revise: needs changes"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2656,
+        432
+      ],
+      "id": "7f855a2e-298b-4bba-9703-8d5a3facce6b",
+      "name": "Marcus: Review",
+      "webhookId": "02bff93e-f3e6-4804-9db7-b2e198f37137",
+      "credentials": {
+        "telegramApi": {
+          "id": "WkgVOdDfvSCSx4x1",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Brief Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Config — Brand + Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config — Brand + Brief": {
+      "main": [
+        [
+          {
+            "node": "Sofia — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sofia — AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sofia — Decision Router": {
+      "main": [
+        [
+          {
+            "node": "Marcus — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sofia — Pass Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sofia — Pass Feedback": {
+      "main": [
+        [
+          {
+            "node": "Sofia — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcus — AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse & Generate Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Generate Image URL": {
+      "main": [
+        [
+          {
+            "node": "Download Generated Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Generated Image": {
+      "main": [
+        [
+          {
+            "node": "Marcus: Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcus — Decision Router": {
+      "main": [
+        [
+          {
+            "node": "Taylor — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcus — Pass Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcus — Pass Feedback": {
+      "main": [
+        [
+          {
+            "node": "Marcus — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taylor — AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Taylor review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taylor — Decision Router": {
+      "main": [
+        [
+          {
+            "node": "Final Output — Post + Image + Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Taylor → Marcus Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taylor → Marcus Feedback": {
+      "main": [
+        [
+          {
+            "node": "Marcus — AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Sofia — Decision Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sofia — AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Marcus — AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Taylor — AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Taylor review": {
+      "main": [
+        [
+          {
+            "node": "Taylor — Decision Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Output — Post + Image + Video": {
+      "main": [
+        [
+          {
+            "node": "Final post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcus: Review": {
+      "main": [
+        [
+          {
+            "node": "Marcus — Decision Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "bbe4a345-3388-49cf-bed2-f398c879201f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b1a1b8797ffb1d7690b1215f89c871f753a4a640c2357ac92405bc4a6ac26a5a"
+  },
+  "id": "BHc6ydAsyO0UgeFj",
+  "tags": []
+}
