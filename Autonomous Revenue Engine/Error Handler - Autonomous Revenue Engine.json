@@ -1,0 +1,324 @@
+{
+  "name": "Error Handler - Autonomous Revenue Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/error_logs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"node_name\": {{ JSON.stringify($node['Merge Diagnosis'].json.error.node.name) }},\n  \"error_type\": {{ JSON.stringify($node['Merge Diagnosis'].json.errorType) }},\n  \"error_message\": {{ JSON.stringify($node['Merge Diagnosis'].json.error.message) }},\n  \"recovery_strategy\": {{ JSON.stringify($node['Merge Diagnosis'].json.recoveryStrategy) }},\n  \"diagnosis\": {{ JSON.stringify($node['Merge Diagnosis'].json.llmDiagnosis.diagnosis) }},\n  \"severity\": {{ JSON.stringify($node['Merge Diagnosis'].json.llmDiagnosis.severity) }},\n  \"can_auto_recover\": {{ $node['Merge Diagnosis'].json.llmDiagnosis.canAutoRecover }}\n}",
+        "options": {}
+      },
+      "id": "1e981e31-ca54-426b-81c2-2519c22f07fd",
+      "name": "Supabase error log1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -688,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const evt = $json;\nconst execution = evt.execution || {};\nconst err = execution.error || evt.error || {};\nconst nodeName = execution.lastNodeExecuted || 'Unknown';\nconst msg = (err.message || '').toString();\n\nlet errorType = 'unknown';\nif (/timeout|ETIMEDOUT|ECONNRESET/i.test(msg)) errorType = 'network_timeout';\nelse if (/401|403|unauthor|forbidden|invalid.*token|api.*key/i.test(msg)) errorType = 'auth_failure';\nelse if (/429|rate.?limit/i.test(msg)) errorType = 'rate_limit';\nelse if (/400|invalid|missing|required|validation/i.test(msg)) errorType = 'data_validation';\nelse if (/500|502|503|504|gateway/i.test(msg)) errorType = 'upstream_5xx';\nelse if (/supabase|database|connection/i.test(msg)) errorType = 'database';\n\nreturn { json: {\n  errorDetails: {\n    message: msg,\n    node: { name: nodeName },\n    data: err.context || err.data || {},\n    stack: (err.stack || '').toString().substring(0, 2000)\n  },\n  errorType,\n  detectedAt: new Date().toISOString(),\n  executionId: (execution.id || '').toString()\n} };"
+      },
+      "id": "df27c7bf-001e-4ea1-bedb-db86a8d453c3",
+      "name": "Classify Error Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1936,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const orig = $node['Classify Error Type'].json;\nlet diag;\ntry { diag = JSON.parse($json.choices[0].message.content); }\ncatch (e) { diag = { diagnosis: 'LLM diagnosis parse failed', rootCause: orig.errorType, suggestedFix: 'manual review', severity: 'high', canAutoRecover: false, recoveryStrategy: 'slack_escalation' }; }\nconst allowed = ['wait_retry','auto_correct','fallback_email','slack_escalation'];\nif (!allowed.includes(diag.recoveryStrategy)) diag.recoveryStrategy = 'slack_escalation';\nreturn { json: {\n  error: orig.errorDetails,\n  errorType: orig.errorType,\n  recoveryStrategy: diag.recoveryStrategy,\n  retryDelay: diag.recoveryStrategy === 'wait_retry' ? 60000 : 0,\n  detectedAt: orig.detectedAt,\n  executionId: orig.executionId,\n  llmDiagnosis: diag\n} };"
+      },
+      "id": "8567243b-688c-4575-aec9-01414ab48681",
+      "name": "Merge Diagnosis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1360,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.recoveryStrategy }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "wait_retry"
+            },
+            {
+              "value2": "auto_correct"
+            },
+            {
+              "value2": "fallback_email"
+            },
+            {
+              "value2": "slack_escalation"
+            }
+          ]
+        }
+      },
+      "id": "a76224c6-35dc-450e-bb06-5a19047418c5",
+      "name": "Recovery Strategy Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        -1136,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "unit": "minutes"
+      },
+      "id": "af4a1a77-8245-4252-b042-2639dc78b585",
+      "name": "Wait and Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        1232
+      ],
+      "webhookId": "dd182504-e4ba-444d-9b66-09a7d530d755"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json;\nconst data = (payload.error && payload.error.data) || {};\nconst corrected = Object.assign({}, data);\nconst notes = [];\nif (corrected.email && typeof corrected.email === 'string') {\n  const before = corrected.email;\n  corrected.email = corrected.email.trim().toLowerCase();\n  if (before !== corrected.email) notes.push('normalized email');\n}\nif (corrected.phone && typeof corrected.phone === 'string') {\n  let digits = corrected.phone.replace(/\\D/g, '');\n  if (digits.length === 10) digits = '1' + digits;\n  const newPhone = digits ? '+' + digits : '';\n  if (newPhone !== corrected.phone) { corrected.phone = newPhone; notes.push('normalized phone'); }\n}\nif (!corrected.lastName) { corrected.lastName = 'Unknown'; notes.push('defaulted lastName'); }\nif (!corrected.company) { corrected.company = 'Unknown'; notes.push('defaulted company'); }\nif (corrected.email && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(corrected.email)) notes.push('email still invalid');\nreturn { json: Object.assign({}, payload, { correctedData: corrected, correctionApplied: true, correctionNotes: notes, correctedAt: new Date().toISOString() }) };"
+      },
+      "id": "672de4c8-7525-48e6-88dc-f011c7eb92f5",
+      "name": "Auto Data Correction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_OPS_CHANNEL }}",
+        "text": "=:rotating_light: *CRITICAL ERROR* in `{{ $json.error.node.name }}`\n*Type:* {{ $json.errorType }} | *Severity:* {{ $json.llmDiagnosis.severity }}\n*Message:* {{ $json.error.message }}\n*Diagnosis:* {{ $json.llmDiagnosis.diagnosis }}\n*Root Cause:* {{ $json.llmDiagnosis.rootCause }}\n*Suggested Fix:* {{ $json.llmDiagnosis.suggestedFix }}\n*Execution ID:* `{{ $json.executionId }}`",
+        "otherOptions": {},
+        "attachments": []
+      },
+      "id": "cd8b89f5-4935-4c39-9519-64e78a4bf4aa",
+      "name": "Slack Escalation",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "subject": "=[n8n Fallback] {{ $json.error.node.name }} — {{ $json.errorType }}",
+        "message": "=An error occurred in the Autonomous Revenue Engine.  Node: {{ $json.error.node.name }} Error Type: {{ $json.errorType }} Message: {{ $json.error.message }}  Diagnosis: {{ $json.llmDiagnosis.diagnosis }} Root Cause: {{ $json.llmDiagnosis.rootCause }} Suggested Fix: {{ $json.llmDiagnosis.suggestedFix }} Severity: {{ $json.llmDiagnosis.severity }}  Execution ID: {{ $json.executionId }} Detected At: {{ $json.detectedAt }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -912,
+        1616
+      ],
+      "id": "54f141cb-9ebc-47fa-9e2d-d93ccd8a956d",
+      "name": "Send a message1",
+      "webhookId": "00c10f50-391c-4e2f-a8a0-d3ca011cf409"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert n8n workflow diagnostician for Apex Cycle, an AI automation agency. Your job is to analyze workflow errors and decide the best recovery strategy.\n\nRECOVERY STRATEGY RULES — choose exactly one:\n- wait_retry → use when error is: network_timeout, rate_limit, upstream_5xx, or any temporary service outage\n- auto_correct → use when error is: data_validation, missing required field, wrong format, bad phone number, invalid email\n- fallback_email → use when error is: unknown, unclear, or low severity and cannot auto recover\n- slack_escalation → use when error is: auth_failure, database, critical severity, or anything that needs human attention immediately\n\nSEVERITY RULES:\n- low → minor issue, workflow can continue, no data lost\n- medium → partial failure, some data may be affected, needs attention soon\n- high → significant failure, leads or data may be lost, needs attention today\n- critical → complete failure, auth broken, database down, needs immediate human intervention\n\nOUTPUT RULES:\n- Return only valid JSON, no extra text, no markdown, no explanation\n- Use exactly these field names\n\n{\n  \"diagnosis\": \"clear one sentence explanation of what went wrong\",\n  \"rootCause\": \"the underlying technical reason for the failure\",\n  \"suggestedFix\": \"specific actionable step to fix this, written for a non-technical person\",\n  \"severity\": \"low or medium or high or critical\",\n  \"canAutoRecover\": true or false based on whether wait_retry or auto_correct can fix it without human help,\n  \"recoveryStrategy\": \"exactly one of: wait_retry, auto_correct, fallback_email, slack_escalation\"\n}\n\nAnalyze this n8n workflow error and return the JSON diagnosis:\n\nError Type: {{$json.errorType}}\nFailed Node: {{$json.errorDetails.node.name}}\nError Message: {{$json.errorDetails.message}}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1712,
+        1520
+      ],
+      "id": "8aad30e0-e164-449b-978e-6c1b56f08a7d",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1648,
+        1744
+      ],
+      "id": "2749d519-dd49-4286-bc5c-89f4959aca6c",
+      "name": "OpenRouter Chat Model"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Classify Error Type": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Diagnosis": {
+      "main": [
+        [
+          {
+            "node": "Recovery Strategy Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recovery Strategy Router": {
+      "main": [
+        [
+          {
+            "node": "Wait and Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto Data Correction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait and Retry": {
+      "main": [
+        [
+          {
+            "node": "Supabase error log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto Data Correction": {
+      "main": [
+        [
+          {
+            "node": "Supabase error log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Escalation": {
+      "main": [
+        [
+          {
+            "node": "Supabase error log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        [
+          {
+            "node": "Supabase error log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Diagnosis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "114698d5-f51f-45de-8ce4-10d15aa90f2f",
+  "meta": {
+    "instanceId": "b1a1b8797ffb1d7690b1215f89c871f753a4a640c2357ac92405bc4a6ac26a5a"
+  },
+  "id": "TrQAXOi1bLaRzyM7",
+  "tags": []
+}

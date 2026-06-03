@@ -1,0 +1,926 @@
+{
+  "name": "Autonomous Revenue Engine — Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/call_logs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"call_id\": {{ JSON.stringify($node['Parse LLM Response'].json.callId) }},\n  \"crm_ref\": {{ JSON.stringify($node['Parse LLM Response'].json.crmRef) }},\n  \"crm_target\": {{ JSON.stringify($node['Parse LLM Response'].json.crmTarget) }},\n  \"qualification_score\": {{ $node['Parse LLM Response'].json.qualificationScore }},\n  \"sentiment\": {{ JSON.stringify($node['Parse LLM Response'].json.sentiment) }},\n  \"budget\": {{ JSON.stringify($node['Parse LLM Response'].json.budget) }},\n  \"timeline\": {{ JSON.stringify($node['Parse LLM Response'].json.timeline) }},\n  \"next_action\": {{ JSON.stringify($node['Parse LLM Response'].json.nextAction) }},\n  \"summary\": {{ JSON.stringify($node['Parse LLM Response'].json.summary) }},\n  \"transcript\": {{ JSON.stringify($node['Parse LLM Response'].json.transcript) }},\n  \"recording_url\": {{ JSON.stringify($node['Parse LLM Response'].json.recordingUrl) }},\n  \"duration_seconds\": {{ $node['Parse LLM Response'].json.durationSeconds }}\n}",
+        "options": {}
+      },
+      "id": "432c588e-2218-4d20-9f96-f2fb476413f4",
+      "name": "Supabase call log1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        5440,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-incoming",
+        "options": {}
+      },
+      "id": "499048e6-76dd-4f88-ad0e-f06a2a2b5bd3",
+      "name": "Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        3968,
+        736
+      ],
+      "webhookId": "4de7bc94-eef4-41b6-adc9-b4e4f05d867f"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $json;\nlet digits = (body['Phone'] || '').toString().replace(/\\D/g, '');\nif (digits.length === 10) digits = '1' + digits;\n\nconst companySize = (body['Company Size'] || '').toString();\nconst budget = (body['Monthly Marketing Budget'] || '').toString();\n\nconst isEnterprise = companySize === '200+' || budget === '20k+';\n\nreturn { json: {\n  execId: $execution.id,\n  firstName: (body['First Name'] || '').toString().trim(),\n  lastName: (body['Last Name'] || 'Unknown').toString().trim(),\n  email: (body['Email'] || '').toString().trim().toLowerCase(),\n  phone: digits ? '+' + digits : '',\n  company: (body['Company'] || 'Unknown').toString().trim(),\n  industry: (body['Industry'] || '').toString(),\n  challenge: (body['Biggest Challenge'] || '').toString(),\n  companySize,\n  budget,\n  crmTarget: isEnterprise ? 'salesforce' : 'hubspot',\n  source: 'strategy-form',\n  timestamp: new Date().toISOString(),\n  rawPayload: body\n} };"
+      },
+      "id": "307f53c2-93ee-405c-a557-0708261d2020",
+      "name": "Data Normalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        4192,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "contact",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "companyName": "={{ $json.company }}",
+          "firstName": "={{ $json.firstName }}",
+          "lastName": "={{ $json.lastName }}",
+          "phoneNumber": "={{ $json.phone }}"
+        }
+      },
+      "id": "1dabe1a0-30c8-4c9a-9dff-a6ddb1894808",
+      "name": "HubSpot Upsert",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 1,
+      "position": [
+        4640,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "externalId": "Email",
+        "externalIdValue": "={{ $json.email }}",
+        "company": "={{ $json.company }}",
+        "lastname": "={{ $json.lastName }}",
+        "additionalFields": {
+          "email": "={{ $json.email }}",
+          "leadSource": "={{ $json.source }}",
+          "phone": "={{ $json.phone }}"
+        }
+      },
+      "id": "ecd07993-63c4-48fb-bf13-848f8bdc09c9",
+      "name": "Salesforce Upsert",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [
+        4640,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $node['Data Normalizer'].json;\nconst crmTarget = lead.crmTarget;\nlet crmRecordId = '';\nif (crmTarget === 'hubspot') { \n  crmRecordId = ($json.vid || $json.id || '').toString(); \n} else { \n  crmRecordId = ($json.id || '').toString(); \n}\nreturn { json: { \n  ...lead, \n  crmTarget, \n  crmRecordId, \n  crmRef: crmTarget + ':' + crmRecordId \n} };"
+      },
+      "id": "e182ca38-4b9c-4078-a70a-8d0d6853751a",
+      "name": "Merge CRM Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        4864,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=YOUR_SUPABASE_URL/rest/v1/call_logs?crm_ref=eq.{{ $json.crmRef }}&analyzed_at=gte.{{ new Date(Date.now() - 30*24*60*60*1000).toISOString() }}&select=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_apiKEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "62b28653-3d42-44ef-9d02-f75aca83578c",
+      "name": "Recency Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        5088,
+        640
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "leadId",
+              "value": "={{ $node['Merge CRM Result'].json.execId }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "leadName",
+              "value": "={{ $node['Merge CRM Result'].json.firstName + ' ' + $node['Merge CRM Result'].json.lastName }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "leadPhone",
+              "value": "={{ $node['Merge CRM Result'].json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "leadEmail",
+              "value": "={{ $node['Merge CRM Result'].json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "leadCompany",
+              "value": "={{ $node['Merge CRM Result'].json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "crmRef",
+              "value": "={{ $node['Merge CRM Result'].json.crmRef }}",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "crmTarget",
+              "value": "={{ $node['Merge CRM Result'].json.crmTarget }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa90a126-a685-4b64-9e89-08c0ce881f70",
+      "name": "Prepare Voice AI Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5536,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call/phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer YOUR_VAPI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assistantId\": \"YOUR_VAPI_ASSISTANT_ID\",\n  \"phoneNumberId\": \"YOUR_VAPI_PHONE_NUMBER_ID\",\n  \"customer\": { \n    \"number\": \"{{ $json.leadPhone }}\", \n    \"name\": \"{{ $json.leadName }}\" \n  },\n  \"metadata\": { \n    \"leadId\": \"{{ $json.leadId }}\", \n    \"crmRef\": \"{{ $json.crmRef }}\", \n    \"crmTarget\": \"{{ $json.crmTarget }}\", \n    \"leadEmail\": \"{{ $json.leadEmail }}\", \n    \"leadCompany\": \"{{ $json.leadCompany }}\" \n  }\n}",
+        "options": {}
+      },
+      "id": "78e5778f-4081-494b-92fd-3dead8d9e504",
+      "name": "Initiate Vapi Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        5760,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-webhook",
+        "options": {}
+      },
+      "id": "47dafd71-81a4-45be-8cba-83733558b76e",
+      "name": "Vapi Webhook Receiver",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        3968,
+        1216
+      ],
+      "webhookId": "cf178b53-4fb5-4201-ae8b-547f7ad30688"
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.body.message.type }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "end-of-call-report"
+            },
+            {
+              "value2": "status-update"
+            }
+          ]
+        }
+      },
+      "id": "62637c7f-7b08-448c-90a3-846bc0805318",
+      "name": "Event Type Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        4192,
+        1184
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "f62243e3-30ec-41ad-a0b0-0b99783c42cd",
+      "name": "Status Update Logger",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4480,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const vapiMsg = $node['Event Type Router'].json.body.message;\nlet llm;\ntry { llm = JSON.parse($json.choices[0].message.content); }\ncatch (e) { llm = { qualificationScore: 0, sentiment: 'neutral', budget: 'unknown', timeline: 'unknown', painPoints: [], nextAction: 'manual review', summary: 'LLM output parse failed', keyInsights: [] }; }\nconst call = vapiMsg.call || {};\nconst meta = call.metadata || {};\nconst crmRef = meta.crmRef || '';\nconst crmRecordId = crmRef.indexOf(':') >= 0 ? crmRef.split(':')[1] : '';\nreturn { json: {\n  qualificationScore: parseInt(llm.qualificationScore, 10) || 0,\n  sentiment: llm.sentiment || 'neutral',\n  budget: llm.budget || 'unknown',\n  timeline: llm.timeline || 'unknown',\n  painPoints: Array.isArray(llm.painPoints) ? llm.painPoints : [],\n  nextAction: llm.nextAction || '',\n  summary: (llm.summary || '').toString().substring(0, 1000),\n  keyInsights: Array.isArray(llm.keyInsights) ? llm.keyInsights : [],\n  callId: call.id || '',\n  crmRef,\n  crmTarget: meta.crmTarget || '',\n  crmRecordId,\n  leadName: (call.customer && call.customer.name) || meta.leadName || '',\n  leadEmail: meta.leadEmail || '',\n  transcript: vapiMsg.transcript || (vapiMsg.artifact && vapiMsg.artifact.transcript) || '',\n  recordingUrl: vapiMsg.recordingUrl || (vapiMsg.artifact && vapiMsg.artifact.recordingUrl) || '',\n  durationSeconds: parseInt(call.durationSeconds || vapiMsg.durationSeconds || 0, 10),\n  analyzedAt: new Date().toISOString()\n} };"
+      },
+      "id": "c9a57400-9881-49bc-aa21-8f1435b93d39",
+      "name": "Parse LLM Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        4768,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.crmTarget }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "hubspot"
+            },
+            {
+              "value2": "salesforce"
+            }
+          ]
+        }
+      },
+      "id": "0dead7be-7fb8-4004-9f40-b33f919e64df",
+      "name": "CRM Update Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        4992,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "contact",
+        "email": "d",
+        "additionalFields": {}
+      },
+      "id": "1417051f-3623-4714-a79b-250726fd15d5",
+      "name": "HubSpot Update",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 1,
+      "position": [
+        5216,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "task",
+        "status": "Completed",
+        "additionalFields": {
+          "description": "={{ 'Summary: ' + $json.summary + '\\n\\nNext Action: ' + $json.nextAction + '\\nSentiment: ' + $json.sentiment + '\\nBudget: ' + $json.budget + '\\nTimeline: ' + $json.timeline }}",
+          "priority": "={{ $json.qualificationScore >= 60 ? 'High' : 'Normal' }}",
+          "subject": "={{ 'Voice AI Call: ' + $json.leadName + ' (Score ' + $json.qualificationScore + ')' }}",
+          "whoId": "={{ $json.crmRecordId }}"
+        }
+      },
+      "id": "d0787496-25f9-4aaa-840b-5debd0563e69",
+      "name": "Salesforce Task Create",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [
+        5216,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $node['Parse LLM Response'].json.qualificationScore }}",
+              "operation": "largerEqual",
+              "value2": 60
+            }
+          ]
+        }
+      },
+      "id": "15db7803-a242-419e-b2f0-0800e257f187",
+      "name": "Qualification Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        5664,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_SALES_CHANNEL }}",
+        "text": "=:fire: *Hot Lead Alert* — {{ $node['Parse LLM Response'].json.leadName }}\n*Score:* {{ $node['Parse LLM Response'].json.qualificationScore }} | *Sentiment:* {{ $node['Parse LLM Response'].json.sentiment }}\n*Summary:* {{ $node['Parse LLM Response'].json.summary }}\n*Next Action:* {{ $node['Parse LLM Response'].json.nextAction }}\n*Budget:* {{ $node['Parse LLM Response'].json.budget }} | *Timeline:* {{ $node['Parse LLM Response'].json.timeline }}\n*Book a meeting:* {{ $env.CALENDAR_LINK }}",
+        "otherOptions": {},
+        "attachments": []
+      },
+      "id": "765a923b-2d54-4aa1-bcaf-ada7f51e8072",
+      "name": "Slack Hot Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        5888,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_OPS_CHANNEL }}",
+        "text": "=:snowflake: *Cold Lead Logged* — {{ $node['Parse LLM Response'].json.leadName }} (Score: {{ $node['Parse LLM Response'].json.qualificationScore }})\n*Summary:* {{ $node['Parse LLM Response'].json.summary }}",
+        "otherOptions": {},
+        "attachments": []
+      },
+      "id": "289a72a9-e2d0-4e5e-b8b5-31a9d05e37ef",
+      "name": "Slack Cold Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        5888,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "path": "ee2c9edb-9d55-4d91-b57b-830c88c7e11a",
+        "formTitle": "Book a Free Strategy Call",
+        "formDescription": "Tell us about your business and we'll reach out within minutes.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "First Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Last Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company Size",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "1-10"
+                  },
+                  {
+                    "option": "11-50"
+                  },
+                  {
+                    "option": "51-200"
+                  },
+                  {
+                    "option": "200+"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Industry",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Real Estate"
+                  },
+                  {
+                    "option": "Healthcare"
+                  },
+                  {
+                    "option": "E-commerce"
+                  },
+                  {
+                    "option": "Agency"
+                  },
+                  {
+                    "option": "SaaS"
+                  },
+                  {
+                    "option": "Other"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Biggest Challenge",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Getting more leads"
+                  },
+                  {
+                    "option": "Converting leads to clients"
+                  },
+                  {
+                    "option": "Scaling my sales team"
+                  },
+                  {
+                    "option": "Automating follow-ups"
+                  },
+                  {
+                    "option": "Other"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Monthly Marketing Budget",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Under $1k"
+                  },
+                  {
+                    "option": "1k-5k"
+                  },
+                  {
+                    "option": "5k-20k"
+                  },
+                  {
+                    "option": "20k+"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "783e8520-fef7-4a6c-899e-d6840daee229",
+      "name": "Lead Webhook ",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 1,
+      "position": [
+        3968,
+        544
+      ],
+      "webhookId": "ee2c9edb-9d55-4d91-b57b-830c88c7e11a"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.crmTarget }}",
+                    "rightValue": "hubspot",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.crmTarget }}",
+                    "rightValue": "salesforce",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7cc8b369-bacc-4e9f-983f-f808edb7d8c6",
+      "name": "CRM Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        4416,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Supabase returns [] when no recent calls found\n// We need to pass the lead data through regardless\nconst leadData = $node['Merge CRM Result'].json;\nreturn { json: leadData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5312,
+        640
+      ],
+      "id": "90d36a74-9dc5-40e9-b0dd-8186a12d9b8d",
+      "name": "Recency Check1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze this sales call transcript:\n\n{{$json.body.message.transcript}}\nYou are an expert sales call analyst for Apex Cycle, an AI automation agency that builds custom automation systems for businesses.\n\nYour job is to read a sales call transcript and extract structured intelligence that helps the sales team decide who to follow up with and how.\n\nSCORING GUIDE — qualificationScore (0 to 100):\nStart at 50, then adjust based on what you hear in the call.\n\nAdd points:\n+20 if they confirmed a budget above $1000/month\n+15 if they want to start within the next 3 months\n+10 if they described a specific business problem automation could solve\n+10 if they are the owner or decision maker\n+5 if they were engaged, asked questions, or agreed to a next step\n\nSubtract points:\n-20 if no budget was mentioned or budget is under $500\n-15 if timeline is vague or more than 6 months away\n-10 if they seemed distracted, rushed, or gave one-word answers\n-15 if they said they are not interested or asked to be removed\n-10 if they never answered the qualification questions\n\nSENTIMENT:\npositive — engaged, curious, asked questions, agreed to next step\nneutral — polite but vague, non-committal, gave short answers\nnegative — dismissive, annoyed, not interested, hung up early\n\nNEXT ACTION — choose exactly one based on the score:\nScore 70 or above → book_strategy_call\nScore 50 to 69 → send_case_study_and_follow_up\nScore 30 to 49 → add_to_nurture_sequence\nScore below 30 → close_lead_not_qualified\n\nOUTPUT RULES:\n- Return only valid JSON, no extra text, no markdown, no explanation\n- Use exactly these field names\n\n{\n  \"qualificationScore\": integer between 0 and 100,\n  \"sentiment\": \"positive\" or \"neutral\" or \"negative\",\n  \"budget\": \"exact words they used about budget, or not mentioned if they never said\",\n  \"timeline\": \"exact words they used about timeline, or not mentioned if they never said\",\n  \"painPoints\": [\"specific problem 1\", \"specific problem 2\"],\n  \"nextAction\": \"one of the four options from the next action rules\",\n  \"summary\": \"2-3 sentence note written to a sales rep explaining what happened on the call, what the lead said, and what to do next. Max 400 characters.\",\n  \"keyInsights\": [\"insight 1\", \"insight 2\", \"insight 3\"],\n  \"isQualified\": true or false based on whether score is 60 or above,\n  \"decisionMaker\": true or false based on whether they indicated they own or run the business\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4416,
+        960
+      ],
+      "id": "14cde2c7-8226-4b01-8e37-e20db2da1184",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        4496,
+        1184
+      ],
+      "id": "438dac83-0552-4de6-817e-804ad5d071cd",
+      "name": "OpenRouter Chat Model1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Supabase call log1": {
+      "main": [
+        [
+          {
+            "node": "Qualification Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Normalizer": {
+      "main": [
+        [
+          {
+            "node": "CRM Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Upsert": {
+      "main": [
+        [
+          {
+            "node": "Merge CRM Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce Upsert": {
+      "main": [
+        [
+          {
+            "node": "Merge CRM Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge CRM Result": {
+      "main": [
+        [
+          {
+            "node": "Recency Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recency Lookup": {
+      "main": [
+        [
+          {
+            "node": "Recency Check1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Voice AI Payload": {
+      "main": [
+        [
+          {
+            "node": "Initiate Vapi Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Webhook Receiver": {
+      "main": [
+        [
+          {
+            "node": "Event Type Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type Router": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status Update Logger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [
+          {
+            "node": "CRM Update Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Update Router": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Salesforce Task Create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Update": {
+      "main": [
+        [
+          {
+            "node": "Supabase call log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce Task Create": {
+      "main": [
+        [
+          {
+            "node": "Supabase call log1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualification Gate": {
+      "main": [
+        [
+          {
+            "node": "Slack Hot Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Cold Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Webhook ": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Router": {
+      "main": [
+        [
+          {
+            "node": "Salesforce Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recency Check1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Voice AI Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "TrQAXOi1bLaRzyM7",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "d2d67ed9-23f6-45ce-9312-ca45431d2d7a",
+  "meta": {
+    "instanceId": "b1a1b8797ffb1d7690b1215f89c871f753a4a640c2357ac92405bc4a6ac26a5a"
+  },
+  "id": "SGMhxd3isk3I3dVK",
+  "tags": []
+}
