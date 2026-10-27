@@ -57,7 +57,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter incomplete tasks and group by staff member\nconst items = $input.all();\nconst today = new Date();\nconst staffTasks = {};\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip header row and completed tasks\n  if (data.Status === 'Status' || data.Status === 'Complete' || data.Status === 'Completed') {\n    continue;\n  }\n  \n  // Skip if missing required fields\n  if (!data['Staff Name'] || !data['Phone Number'] || !data['Task Description']) {\n    continue;\n  }\n  \n  const staffName = data['Staff Name'].trim();\n  const phone = data['Phone Number'].toString().trim();\n  const task = data['Task Description'].trim();\n  const dueDate = data['Due Date'] ? data['Due Date'].trim() : 'No due date';\n  const status = data.Status || 'Pending';\n  \n  // Initialize staff member if not exists\n  if (!staffTasks[phone]) {\n    staffTasks[phone] = {\n      name: staffName,\n      phone: phone,\n      tasks: []\n    };\n  }\n  \n  // Add task to staff member's list\n  staffTasks[phone].tasks.push({\n    description: task,\n    dueDate: dueDate,\n    status: status\n  });\n}\n\n// Convert to array format for N8N\nconst output = Object.values(staffTasks).map(staff => ({\n  json: {\n    staffName: staff.name,\n    phoneNumber: staff.phone,\n    taskCount: staff.tasks.length,\n    tasks: staff.tasks\n  }\n}));\n\nreturn output;"
+        "jsCode": "// Filter incomplete tasks and group by staff member\nconst items = $input.all();\nconst today = new Date();\nconst staffTasks = {};\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip header row and completed tasks\n  if (data.Status === 'Status' || data.Status === 'Complete' || data.Status === 'Completed') {\n    continue;\n  }\n  \n  // Skip if missing required fields\n  if (!data['Staff Name'] || !data['Phone Number'] || !data['Task Description']) {\n    continue;\n  }\n  \n  const staffName = data['Staff Name'].trim();\n  let phone = data['Phone Number'].toString().trim().replace(/[\\s\\-()]/g, '');\n  if (!phone.startsWith('+')) phone = '+' + phone;\n  if (!/^\\+\\d{8,15}$/.test(phone)) continue; // skip unusable contact rows\n  const task = data['Task Description'].trim();\n  const dueDate = data['Due Date'] ? data['Due Date'].trim() : 'No due date';\n  const status = data.Status || 'Pending';\n  \n  // Initialize staff member if not exists\n  if (!staffTasks[phone]) {\n    staffTasks[phone] = {\n      name: staffName,\n      phone: phone,\n      tasks: []\n    };\n  }\n  \n  // Add task to staff member's list\n  staffTasks[phone].tasks.push({\n    description: task,\n    dueDate: dueDate,\n    status: status\n  });\n}\n\n// Convert to array format for N8N\nconst output = Object.values(staffTasks).map(staff => ({\n  json: {\n    staffName: staff.name,\n    phoneNumber: staff.phone,\n    taskCount: staff.tasks.length,\n    tasks: staff.tasks\n  }\n}));\n\nreturn output;"
       },
       "name": "Process & Group Tasks",
       "type": "n8n-nodes-base.code",
@@ -84,7 +84,7 @@
     {
       "parameters": {
         "from": "+14155238886",
-        "to": "+201144281251",
+        "to": "={{ $json.phoneNumber }}",
         "toWhatsapp": true,
         "message": "={{ $json.message }}",
         "options": {}
