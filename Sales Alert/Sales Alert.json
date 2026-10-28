@@ -162,14 +162,14 @@
     },
     "If": {
       "main": [
-        [],
         [
           {
             "node": "Send a text message",
             "type": "main",
             "index": 0
           }
-        ]
+        ],
+        []
       ]
     }
   },
