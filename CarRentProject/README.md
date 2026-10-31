@@ -28,7 +28,7 @@ Respond to Webhook → { "reply": "..." }
 Chat UI renders response
 ```
 
-**Retrieval-Augmented Generation (RAG):** The agent only answers from the ingested knowledge base — it won't hallucinate policies or prices.
+**Retrieval-Augmented Generation (RAG):** The agent only answers from the ingested knowledge base — it is instructed to answer from that knowledge base only. This reduces made-up policies or prices but does not rule them out, and answer quality has not been formally evaluated.
 
 **Session Memory:** Each browser tab gets a unique `sessionId`, keeping multi-turn conversations coherent.
 

@@ -18,7 +18,7 @@ Form submission → data normalization → CRM routing (HubSpot or Salesforce ba
 **Sub-flow 2 — Post-Call Intelligence**
 Vapi webhook → GPT-4o transcript analysis → qualification score 0-100, sentiment, budget, timeline, pain points, next action → CRM update → Supabase log → Slack hot lead alert or cold lead notice
 
-**Sub-flow 3 — Self-Healing Error Handler** (separate workflow)
+**Sub-flow 3 — Error Handler (diagnose and log)** (separate workflow)
 Error Trigger → JS error classifier → GPT-4o-mini diagnosis → recovery routing: wait and retry / auto data correction / Gmail fallback / Slack escalation → Supabase error log
 
 ---
@@ -149,3 +149,7 @@ curl -X POST https://your-n8n-domain/webhook/lead-incoming \
 ## Built by
 
 [Apex Cycle](https://github.com/Mohamed-Hishamx) — AI automation systems for sales and operations
+
+## Status
+
+This is a prototype. The error handler diagnoses and logs failures, but automatic replay of the failed step is not implemented yet, so it should not be described as self-healing. Test with stubbed CRM and call providers before using real client data.
