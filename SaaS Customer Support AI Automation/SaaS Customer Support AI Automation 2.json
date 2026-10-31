@@ -113,7 +113,7 @@
             {
               "id": "9284bf2e-bc4b-46cc-9cde-747af025a071",
               "name": "ticket_id",
-              "value": "={{$json.email}}-{{$now}}",
+              "value": "={{ ($json.body?.email ?? $json.email ?? 'unknown') }}-{{$now}}",
               "type": "string"
             },
             {
@@ -125,19 +125,19 @@
             {
               "id": "67d85ef1-341b-471b-b0b6-0c4402524ab4",
               "name": "customer_name",
-              "value": "={{$json.name || 'Customer'}}",
+              "value": "={{ $json.body?.name ?? $json.name ?? 'Customer' }}",
               "type": "string"
             },
             {
               "id": "2a5ce924-d7b0-46bb-ba6c-eab777ff1a82",
               "name": "customer_email",
-              "value": "={{$json.email}}",
+              "value": "={{ $json.body?.email ?? $json.email }}",
               "type": "string"
             },
             {
               "id": "aeca9b7d-ee04-476b-9737-bb9bc4eb19d1",
               "name": "message",
-              "value": "={{$json.message}}",
+              "value": "={{ $json.body?.message ?? $json.message }}",
               "type": "string"
             },
             {
@@ -226,7 +226,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize input: Perplexity returns ARRAY\nconst data = Array.isArray($json) ? $json[0] : $json;\n\nlet text = '';\n\n// Perplexity / OpenAI format\nif (data?.choices?.[0]?.message?.content) {\n  text = data.choices[0].message.content;\n}\n// n8n AI node format\nelse if (data.output) {\n  text = data.output;\n}\n// fallback\nelse if (data.message?.content) {\n  text = data.message.content;\n}\nelse if (data.content) {\n  text = data.content;\n}\n\nif (!text) {\n  throw new Error(\n    'No AI text found. Available keys: ' +\n    Object.keys(data || {}).join(', ')\n  );\n}\n\n// Remove <think> blocks and markdown fences\nlet clean = String(text)\n  .replace(/<think>[\\s\\S]*?<\\/think>/gi, '')\n  .replace(/```json|```/gi, '')\n  .trim();\n\n// Extract JSON\nconst match = clean.match(/\\{[\\s\\S]*\\}/);\nif (!match) {\n  throw new Error(\n    'No JSON object found. Got: ' +\n    clean.slice(0, 200)\n  );\n}\n\nconst obj = JSON.parse(match[0]);\n\n// Normalize intent\nconst intent = (obj.intent || '').toLowerCase().trim();\nif (intent === 'spam') obj.intent = 'spam';\nelse if (intent === 'complaint') obj.intent = 'complaint';\nelse obj.intent = 'question';\n\n// Defaults\nobj.confidence = obj.confidence ?? 0.5;\nobj.sentiment = obj.sentiment || 'neutral';\nobj.urgency = obj.urgency || 'medium';\nobj.summary = obj.summary || 'No summary provided';\n\nreturn [obj];\n"
+        "jsCode": "// Normalize input: Perplexity returns ARRAY\nconst data = Array.isArray($json) ? $json[0] : $json;\n\nlet text = '';\n\n// Perplexity / OpenAI format\nif (data?.choices?.[0]?.message?.content) {\n  text = data.choices[0].message.content;\n}\n// n8n AI node format\nelse if (data.output) {\n  text = data.output;\n}\n// fallback\nelse if (data.message?.content) {\n  text = data.message.content;\n}\nelse if (data.content) {\n  text = data.content;\n}\n\nif (!text) {\n  throw new Error(\n    'No AI text found. Available keys: ' +\n    Object.keys(data || {}).join(', ')\n  );\n}\n\n// Remove <think> blocks and markdown fences\nlet clean = String(text)\n  .replace(/<think>[\\s\\S]*?<\\/think>/gi, '')\n  .replace(/```json|```/gi, '')\n  .trim();\n\n// Extract JSON\nconst match = clean.match(/\\{[\\s\\S]*\\}/);\nif (!match) {\n  throw new Error(\n    'No JSON object found. Got: ' +\n    clean.slice(0, 200)\n  );\n}\n\nconst obj = JSON.parse(match[0]);\n\n// Normalize intent\nconst intent = (obj.intent || '').toLowerCase().trim();\nif (intent === 'spam') obj.intent = 'spam';\nelse if (intent === 'complaint') obj.intent = 'complaint';\nelse if (intent === 'question') obj.intent = 'question';\nelse obj.intent = 'needs_review'; // unknown label: send to a human, never auto-reply\n\n// Defaults\nobj.confidence = obj.confidence ?? 0.5;\nobj.sentiment = obj.sentiment || 'neutral';\nobj.urgency = obj.urgency || 'medium';\nobj.summary = obj.summary || 'No summary provided';\n\n// Re-attach the original ticket so later nodes do not depend on the input channel\nlet ticket;\ntry { ticket = $('Merge').item.json; } catch (e) { ticket = $('Merge').first().json; }\n\nreturn [{ ...ticket, ...obj }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -312,6 +312,30 @@
               },
               "renameOutput": true,
               "outputKey": "question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "5f339004-60ee-405e-99a7-714c8fdfdd18",
+                    "leftValue": "={{$json.intent}}",
+                    "rightValue": "needs_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "needs_review"
             }
           ]
         },
@@ -344,7 +368,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -373,7 +398,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -402,6 +428,15 @@
                 "type": "string",
                 "operation": "equals"
               }
+            },
+            {
+              "id": "2dd4a046-8d10-4a48-b58a-ce1046250808",
+              "leftValue": "={{$json.urgency}}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "or"
@@ -419,9 +454,9 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Gmail Trigger').item.json.From }}",
+        "sendTo": "={{ $('Parse Classification').item.json.customer_email }}",
         "subject": "We've received your complaint",
-        "message": "=Hi {{ $('Gmail Trigger').item.json.From }},\n\nThank you for contacting us. We've received your complaint regarding {{ $('Gmail Trigger').item.json.Subject }} and a member of our support team is now reviewing it.\n\nWe aim to respond with an update within 24 hours.\n\nIf you have any additional details or screenshots, you can reply to this email and they will be added to your case.\n\nTicket ID: {{ $('Gmail Trigger').item.json.id }}\n\nBest regards,\nSupport Team",
+        "message": "=Hi {{ $('Parse Classification').item.json.customer_name }},\n\nThank you for contacting us. We've received your complaint regarding {{ $('Parse Classification').item.json.subject }} and a member of our support team is now reviewing it.\n\nWe aim to respond with an update within 24 hours.\n\nIf you have any additional details or screenshots, you can reply to this email and they will be added to your case.\n\nTicket ID: {{ $('Parse Classification').item.json.ticket_id }}\n\nBest regards,\nSupport Team",
         "options": {
           "appendAttribution": false
         }
@@ -446,7 +481,7 @@
       "parameters": {
         "sendTo": "mohamedhisham855@gmail.com",
         "subject": "🚨 URGENT TICKET: {{$json.intent}} - {{$json.customer_name}}",
-        "message": "=High-priority ticket escalated by automation.\n\n**Customer Information:**\nName: {{ $('Gmail Trigger').item.json.From }}\nEmail: {{$json.customer_email}}\nSource: {{$json.source}}\nTime: {{$json.timestamp}}\n\n**AI Classification:**\n- Intent: {{$json.intent}}\n- Urgency: {{$json.urgency}}\n- Sentiment: {{$json.sentiment}}\n- Confidence: {{$json.confidence}}\n\n**Subject:**\n{{ $('Gmail Trigger').item.json.Subject }}\n\n**Message:**\n{{ $('Gmail Trigger').item.json.snippet }}\n\n**Summary:**\n{{$json.summary}}\n\n---\n**Action Required:**\nPlease review and respond to the customer manually.\nTicket ID: {{ $('Gmail Trigger').item.json.id }}",
+        "message": "=High-priority ticket escalated by automation.\n\n**Customer Information:**\nName: {{ $('Parse Classification').item.json.customer_name }}\nEmail: {{$json.customer_email}}\nSource: {{$json.source}}\nTime: {{$json.timestamp}}\n\n**AI Classification:**\n- Intent: {{$json.intent}}\n- Urgency: {{$json.urgency}}\n- Sentiment: {{$json.sentiment}}\n- Confidence: {{$json.confidence}}\n\n**Subject:**\n{{ $('Parse Classification').item.json.subject }}\n\n**Message:**\n{{ $('Parse Classification').item.json.message }}\n\n**Summary:**\n{{$json.summary}}\n\n---\n**Action Required:**\nPlease review and respond to the customer manually.\nTicket ID: {{ $('Parse Classification').item.json.ticket_id }}",
         "options": {
           "appendAttribution": false
         }
@@ -485,7 +520,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -513,9 +549,9 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Gmail Trigger').item.json.From }}",
-        "subject": "={{ $('Gmail Trigger').item.json.Subject }}",
-        "message": "=Hi {{ $('Edit Fields').item.json.customer_name || 'Customer' }},\n\n{{ $json.choices[0].message.content }}\n\nTicket ID: {{ $('Edit Fields').item.json.ticket_id }}\nBest regards,\nSupport Team\n",
+        "sendTo": "={{ $('Parse Classification').item.json.customer_email }}",
+        "subject": "={{ $('Parse Classification').item.json.subject }}",
+        "message": "=Hi {{ $('Parse Classification').item.json.customer_name || 'Customer' }},\n\n{{ $json.choices[0].message.content }}\n\nTicket ID: {{ $('Parse Classification').item.json.ticket_id }}\nBest regards,\nSupport Team\n",
         "options": {
           "appendAttribution": false
         }
@@ -567,7 +603,20 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "message": "={{$json.message}}"
+            "ticket_id": "={{ $('Parse Classification').item.json.ticket_id }}",
+            "source": "={{ $('Parse Classification').item.json.source }}",
+            "customer_name": "={{ $('Parse Classification').item.json.customer_name }}",
+            "customer_email": "={{ $('Parse Classification').item.json.customer_email }}",
+            "subject": "={{ $('Parse Classification').item.json.subject }}",
+            "message": "={{ $('Parse Classification').item.json.message }}",
+            "intent": "={{ $('Parse Classification').item.json.intent }}",
+            "urgency": "={{ $('Parse Classification').item.json.urgency }}",
+            "sentiment": "={{ $('Parse Classification').item.json.sentiment }}",
+            "confidence": "={{ $('Parse Classification').item.json.confidence }}",
+            "summary": "={{ $('Parse Classification').item.json.summary }}",
+            "timestamp": "={{ $('Parse Classification').item.json.timestamp }}",
+            "status": "={{ $('Parse Classification').item.json.intent === 'spam' ? 'closed_spam' : ($('Parse Classification').item.json.intent === 'question' ? 'ai_replied' : 'needs_human_review') }}",
+            "escalation_reason": "={{ $('Parse Classification').item.json.intent === 'spam' ? 'spam_detected' : ($('Parse Classification').item.json.intent === 'needs_review' ? 'invalid_classification' : ($('Parse Classification').item.json.intent === 'complaint' ? (['high','critical'].includes($('Parse Classification').item.json.urgency) ? 'high_urgency' : 'complaint') : '')) }}"
           },
           "matchingColumns": [
             "ticket_id"
@@ -730,6 +779,47 @@
           "name": "Perplexity account"
         }
       }
+    },
+    {
+      "parameters": {},
+      "id": "ccf2c96e-190a-4fad-babd-ada83f44025f",
+      "name": "Reject Empty Message",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2480,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "df0a1779-0e6e-4bc5-b098-ad22caac869c",
+              "name": "status",
+              "value": "needs_human_review",
+              "type": "string"
+            },
+            {
+              "id": "8b606ac6-d936-404f-8fd7-85f19eb6120a",
+              "name": "escalation_reason",
+              "value": "invalid_classification",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "717bb854-fec4-44cf-aa28-3067516e7b17",
+      "name": "Set Status - Needs Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -960,
+        420
+      ]
     }
   ],
   "pinData": {},
@@ -793,7 +883,7 @@
       "main": [
         [
           {
-            "node": "Message a model",
+            "node": "Reject Empty Message",
             "type": "main",
             "index": 0
           }
@@ -842,6 +932,13 @@
         [
           {
             "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Status - Needs Review",
             "type": "main",
             "index": 0
           }
@@ -997,6 +1094,17 @@
         [
           {
             "node": "Send AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status - Needs Review": {
+      "main": [
+        [
+          {
+            "node": "Alert Support Team",
             "type": "main",
             "index": 0
           }
