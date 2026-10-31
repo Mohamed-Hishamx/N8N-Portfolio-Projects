@@ -1,6 +1,6 @@
 # Automated Lead Capture & Notification System
 
-A production n8n workflow that captures inbound leads, scores them, checks for duplicates, saves to Airtable, and instantly notifies the team on Telegram — fully automated, zero manual steps.
+An n8n workflow that captures inbound leads, scores them, checks for duplicates, saves to Airtable, and instantly notifies the team on Telegram — fully automated, zero manual steps.
 
 ---
 
