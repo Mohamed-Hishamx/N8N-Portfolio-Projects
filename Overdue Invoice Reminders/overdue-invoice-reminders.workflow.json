@@ -1,5 +1,5 @@
 {
-  "name": "Get Paid Lite",
+  "name": "Overdue Invoice Reminders",
   "nodes": [
     {
       "id": "get-paid-lite-1",
@@ -716,7 +716,7 @@
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "={{ $('Config').first().json.OWNER_TELEGRAM_CHAT_ID }}",
-        "text": "={{ (() => {const rows=$('Invoice Loop').all(0).map(i=>i.json);const count=s=>rows.filter(r=>r.status===s).length;return 'Get Paid Lite summary\nSent: '+count('sent')+'\nDry run: '+count('dry_run')+'\nOwner escalations: '+count('escalated')+'\nFailed: '+count('failed')+'\nSkipped after recheck: '+count('skipped')+'\nSkipped invalid rows: '+Math.max(0,...rows.map(r=>Number(r.skipped_invalid_rows)||0))+'\nDeferred: '+Math.max(0,...rows.map(r=>Number(r.deferred)||0));})() }}",
+        "text": "={{ (() => {const rows=$('Invoice Loop').all(0).map(i=>i.json);const count=s=>rows.filter(r=>r.status===s).length;return 'Overdue Invoice Reminders summary\nSent: '+count('sent')+'\nDry run: '+count('dry_run')+'\nOwner escalations: '+count('escalated')+'\nFailed: '+count('failed')+'\nSkipped after recheck: '+count('skipped')+'\nSkipped invalid rows: '+Math.max(0,...rows.map(r=>Number(r.skipped_invalid_rows)||0))+'\nDeferred: '+Math.max(0,...rows.map(r=>Number(r.deferred)||0));})() }}",
         "additionalFields": {
           "appendAttribution": false
         }
@@ -755,7 +755,7 @@
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "={{ $('Config').first().json.OWNER_TELEGRAM_CHAT_ID }}",
-        "text": "={{ 'Get Paid Lite uncaught failure\n'+String($json.execution?.error?.message || $json.trigger?.error?.message || 'Inspect execution in n8n').slice(0,3000) }}",
+        "text": "={{ 'Overdue Invoice Reminders uncaught failure\n'+String($json.execution?.error?.message || $json.trigger?.error?.message || 'Inspect execution in n8n').slice(0,3000) }}",
         "additionalFields": {
           "appendAttribution": false
         }
@@ -781,7 +781,7 @@
       "parameters": {
         "width": 2000,
         "height": 160,
-        "content": "## Get Paid Lite\nDaily 10:00 Cairo or Manual -> Config -> quiet-hours gate -> Sheets -> Pick Invoices -> one-at-a-time loop.\nStages 1 to 3: LLM + deterministic fallback -> fresh source check -> owner draft in dry run, or Gmail then sheet update in live mode.\nStage 4: same row re-read and fresh check, then owner Telegram only. Live owner escalation success also updates the sheet.\nDry run never updates the sheet. One conditional summary after the loop. Set this workflow as its own Error workflow."
+        "content": "## Overdue Invoice Reminders\nDaily 10:00 Cairo or Manual -> Config -> quiet-hours gate -> Sheets -> Pick Invoices -> one-at-a-time loop.\nStages 1 to 3: LLM + deterministic fallback -> fresh source check -> owner draft in dry run, or Gmail then sheet update in live mode.\nStage 4: same row re-read and fresh check, then owner Telegram only. Live owner escalation success also updates the sheet.\nDry run never updates the sheet. One conditional summary after the loop. Set this workflow as its own Error workflow."
       }
     }
   ],

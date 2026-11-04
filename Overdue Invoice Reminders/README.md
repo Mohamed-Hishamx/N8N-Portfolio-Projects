@@ -1,10 +1,10 @@
-# Get Paid Lite
+# Overdue Invoice Reminders
 
 The inactive workflow contains exactly 25 nodes, including the sticky note, and 4 Code nodes. It uses one Google Sheet, Gmail, Telegram, and OpenRouter. DRY_RUN defaults true. No secrets are included.
 
 ## Setup
 
-1. Import get-paid-lite.workflow.json into n8n. Leave it inactive until testing is complete.
+1. Import overdue-invoice-reminders.workflow.json into n8n. Leave it inactive until testing is complete.
 2. Create the n8n credentials below and replace every matching credential placeholder. Select the existing OpenRouter account if available.
 
 | Credential type | Suggested name | Access |
