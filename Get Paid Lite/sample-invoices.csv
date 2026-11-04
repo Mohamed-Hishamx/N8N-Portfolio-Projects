@@ -1,0 +1,7 @@
+invoice_no,customer_name,email,language,amount,amount_paid,currency,due_date,status,last_reminder_stage,last_reminder_date
+LITE-001,Gentle Customer,gentle@example.com,en,100,0,EGP,2026-11-03,open,0,
+LITE-002,أحمد علي,ahmed@example.com,ar,200,0,EGP,2026-10-28,open,0,
+LITE-003,Firm Customer,firm@example.com,en,300,0,EGP,2026-10-21,open,0,
+LITE-004,Owner Review,review@example.com,en,400,0,EGP,2026-10-05,open,0,
+LITE-005,Paid Customer,paid@example.com,en,500,500,EGP,2026-10-01,paid,0,
+LITE-006,Partial Payment,partial@example.com,en,600,125,EGP,2026-10-25,open,0,
